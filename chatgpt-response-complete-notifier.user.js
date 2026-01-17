@@ -6,6 +6,7 @@
 // @description  Sends a desktop notification with text preview when ChatGPT finishes a response. Robustly handles 'New Chat' detection and prevents notification spam.
 // @homepage     https://github.com/ramhaidar/ChatGPT-Response-Complete-Notifier
 // @source       https://github.com/ramhaidar/ChatGPT-Response-Complete-Notifier/raw/refs/heads/main/chatgpt-response-complete-notifier.user.js
+// @license      GPL-3.0
 // @match        https://chatgpt.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
