@@ -20,7 +20,7 @@ Sends a browser notification with text preview when ChatGPT finishes a response.
 
 **Click the link below to install directly:**
 
-[🚀 Install Script](chatgpt-response-complete-notifier.user.js)
+[🚀 Install Script](https://github.com/ramhaidar/ChatGPT-Response-Complete-Notifier/raw/refs/heads/main/chatgpt-response-complete-notifier.user.js)
 
 *Note: When you click the link, Tampermonkey (or your userscript manager) should automatically detect the script and prompt you to install it. If not, follow the manual steps below.*
 

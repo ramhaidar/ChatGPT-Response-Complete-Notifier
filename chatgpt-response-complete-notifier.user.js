@@ -1,8 +1,11 @@
 // ==UserScript==
 // @name         ChatGPT Response Complete Notifier
 // @namespace    http://tampermonkey.net/
-// @version      1.0.0
+// @version      1.0.1
+// @author       ramhaidar
 // @description  Sends a desktop notification with text preview when ChatGPT finishes a response. Robustly handles 'New Chat' detection and prevents notification spam.
+// @homepage     https://github.com/ramhaidar/ChatGPT-Response-Complete-Notifier
+// @source       https://github.com/ramhaidar/ChatGPT-Response-Complete-Notifier/raw/refs/heads/main/chatgpt-response-complete-notifier.user.js
 // @match        https://chatgpt.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
