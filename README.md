@@ -1,14 +1,16 @@
 # ChatGPT Response Complete Notifier
 
-Sends a browser notification with text preview when ChatGPT finishes a response. Robustly handles 'New Chat' detection and prevents notification spam.
+Sends a browser notification with text preview when ChatGPT finishes a response. Includes an audible completion chime. Robustly handles 'New Chat' detection and prevents notification spam.
 
 ## Features
 
 - 📢 **Desktop Notifications**: Get notified when ChatGPT finishes generating a response
 - 📝 **Text Preview**: Shows the first 150 characters of the response in the notification
+- 🔔 **Audible Chime**: Two-tone completion sound plays alongside the notification (requires a click/key press to unlock audio)
 - 🔄 **Smart Detection**: Automatically detects streaming start/end and "New Chat" events
 - 🛡️ **No Spam**: Built-in cooldown prevents duplicate notifications
 - 🔧 **Tampermonkey Compatible**: Works with Tampermonkey and other userscript managers
+- 🔁 **Auto-Update**: Script updates are delivered via jsDelivr CDN
 
 ## Installation
 
@@ -20,7 +22,7 @@ Sends a browser notification with text preview when ChatGPT finishes a response.
 
 **Click the link below to install directly:**
 
-[🚀 Install Script](https://github.com/ramhaidar/ChatGPT-Response-Complete-Notifier/raw/refs/heads/main/chatgpt-response-complete-notifier.user.js)
+[🚀 Install Script](https://cdn.jsdelivr.net/gh/ramhaidar/ChatGPT-Response-Complete-Notifier@main/chatgpt-response-complete-notifier.user.js)
 
 *Note: When you click the link, Tampermonkey (or your userscript manager) should automatically detect the script and prompt you to install it. If not, follow the manual steps below.*
 
@@ -42,12 +44,19 @@ Sends a browser notification with text preview when ChatGPT finishes a response.
 
 ### Testing
 
-To test the notification manually, open the browser console and run:
+To test the notification and sound manually, open the browser console and run:
+
 ```javascript
 testCRNNotification()
 ```
 
-**Note**: This function is exposed via `unsafeWindow` in Tampermonkey, which allows it to be called from the browser console. If testing doesn't work, ensure the script is running by checking Tampermonkey's icon status.
+To test only the completion chime:
+
+```javascript
+testCRNSound()
+```
+
+**Note**: These functions are exposed via `unsafeWindow` in Tampermonkey, which allows them to be called from the browser console. If testing doesn't work, ensure the script is running by checking Tampermonkey's icon status.
 
 ## Configuration
 
@@ -55,22 +64,37 @@ You can modify the configuration in the source code:
 
 ```javascript
 const CONFIG = {
-    DEBUG_MODE: false,           // Enable debug logging
-    NOTIFICATION_COOLDOWN: 3000, // Minimum time between notifications (ms)
-    PERMISSION_KEY: 'crn_notification_permission_granted',
-    POLL_INTERVAL: 500          // Check interval (ms)
+    DEBUG_MODE: false,             // Enable debug logging
+    NOTIFICATION_COOLDOWN: 3000,   // Minimum time between notifications (ms)
+    COMPLETION_DEBOUNCE: 350,      // Debounce window before confirming completion (ms)
+    POLL_INTERVAL: 500,            // Check interval (ms)
+    SOUND_ENABLED: true,           // Play audible completion chime
+    SOUND_VOLUME: 1,               // Chime volume (0.0 to 1.0)
+    NATIVE_NOTIFICATION_SOUND: false  // Let the OS notification play its own sound
 };
 ```
 
 ## How It Works
 
 1. **Button State Monitoring**: The script monitors ChatGPT's send/stop button state changes
-2. **Detection Logic**: 
+2. **Detection Logic**:
    - When the "Stop streaming" button appears → Streaming started
-   - When the "Send prompt" button becomes disabled → Response completed
+   - When the "Stop streaming" button disappears → Response completed (with debounce)
    - When URL changes → New Chat detected (resets state)
-3. **Notification**: Shows a native notification with response preview
-4. **Cooldown**: Prevents duplicate notifications within the cooldown period
+3. **Audio Unlock**: On first click/key press, the script unlocks the Web Audio API and requests notification permission
+4. **Notification**: Shows a native notification with response preview. Falls back to `GM_notification` if the native API is unavailable
+5. **Completion Chime**: A two-tone sine wave chime plays alongside the notification
+6. **Cooldown**: Prevents duplicate notifications within the cooldown period
+
+## Auto-Update
+
+The script checks for updates automatically via Tampermonkey using the jsDelivr CDN URL:
+
+```
+https://cdn.jsdelivr.net/gh/ramhaidar/ChatGPT-Response-Complete-Notifier@main/chatgpt-response-complete-notifier.user.js
+```
+
+Tampermonkey checks for updates periodically. You can also manually trigger an update check from the Tampermonkey dashboard.
 
 ## Browser Compatibility
 
@@ -90,6 +114,11 @@ const CONFIG = {
   - **macOS**: Check Do Not Disturb in Control Center or System Settings
   - **Linux**: Check your notification settings (varies by distro)
   - Check browser notification settings for "Allow notifications"
+
+**No completion chime:**
+- Browsers require a user gesture (click or key press) to unlock the Web Audio API. Click anywhere on the page once to enable sound
+- Check `SOUND_ENABLED` and `SOUND_VOLUME` in the config
+- Test with `testCRNSound()` in the console
 
 **Multiple notifications:**
 - The script includes a 3-second cooldown by default
