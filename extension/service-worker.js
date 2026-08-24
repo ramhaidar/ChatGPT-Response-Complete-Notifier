@@ -2,7 +2,6 @@
 
 const OFFSCREEN_DOCUMENT = 'offscreen.html';
 const RESPONSE_PREVIEW_MAX_CHARS = 260;
-const FINAL_TURN_WAIT_MS = 30000;
 const CHATGPT_REQUEST_FILTER = {
   urls: [
     'https://chatgpt.com/backend-api/f/conversation*',
@@ -11,6 +10,7 @@ const CHATGPT_REQUEST_FILTER = {
 };
 
 let creatingOffscreen = null;
+const lastNotificationFingerprintByTab = new Map();
 
 function normalizePathname(url) {
   try {
@@ -71,137 +71,6 @@ function truncateResponse(text, maxChars = RESPONSE_PREVIEW_MAX_CHARS) {
   return `${safeCut.trimEnd()}…`;
 }
 
-// Runs inside the ChatGPT tab only after the browser-level network request
-// has completed. The response is selected by conversation structure:
-// latest USER turn -> assistant turn(s) that occur AFTER that user turn.
-// Therefore an assistant response from the previous prompt cannot qualify.
-async function extractAnswerBoundToLatestPrompt(timeoutMs) {
-  const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
-
-  const cleanTitle = (rawTitle) => {
-    const raw = normalize(rawTitle);
-    if (!raw) return '';
-    return raw
-      .replace(/\s*[-|–—]\s*ChatGPT\s*$/i, '')
-      .replace(/^ChatGPT\s*[-|–—]\s*/i, '')
-      .trim();
-  };
-
-  const turnNodes = () => Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]'));
-
-  const roleOf = (turn) => {
-    if (!turn) return '';
-    const direct = normalize(
-      turn.getAttribute('data-turn') || turn.getAttribute('data-message-author-role') || ''
-    ).toLowerCase();
-    if (direct === 'user' || direct === 'assistant') return direct;
-    if (turn.querySelector('[data-message-author-role="user"]')) return 'user';
-    if (turn.querySelector('[data-message-author-role="assistant"]')) return 'assistant';
-    return '';
-  };
-
-  const assistantText = (turn) => {
-    if (!turn) return '';
-    const roleNode = turn.matches?.('[data-message-author-role="assistant"]')
-      ? turn
-      : turn.querySelector('[data-message-author-role="assistant"]');
-    if (!roleNode) return '';
-
-    // Prefer the rendered answer container. It excludes the turn action bar.
-    const rendered = roleNode.querySelector('.markdown, [class*="prose"]');
-    const text = rendered
-      ? (rendered.innerText || rendered.textContent || '')
-      : (roleNode.innerText || roleNode.textContent || '');
-    return normalize(text);
-  };
-
-  const locate = () => {
-    const turns = turnNodes();
-    let latestUserIndex = -1;
-    for (let i = 0; i < turns.length; i += 1) {
-      if (roleOf(turns[i]) === 'user') latestUserIndex = i;
-    }
-    if (latestUserIndex < 0) return null;
-
-    // Pick the LAST non-empty assistant turn after the latest user turn. This
-    // also handles regenerate/agent flows that expose more than one assistant
-    // wrapper after a single prompt.
-    let candidate = '';
-    for (let i = latestUserIndex + 1; i < turns.length; i += 1) {
-      if (roleOf(turns[i]) !== 'assistant') continue;
-      const text = assistantText(turns[i]);
-      if (text) candidate = text;
-    }
-
-    if (!candidate) return null;
-    return {
-      sessionTitle: cleanTitle(document.title),
-      response: candidate
-    };
-  };
-
-  const immediate = locate();
-  if (immediate) return immediate;
-
-  return await new Promise((resolve) => {
-    let settled = false;
-    let observer = null;
-    let timeoutId = null;
-
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      if (observer) observer.disconnect();
-      if (timeoutId !== null) clearTimeout(timeoutId);
-      resolve(result);
-    };
-
-    const check = () => {
-      const result = locate();
-      if (result) finish(result);
-    };
-
-    const root = document.body || document.documentElement;
-    if (root && typeof MutationObserver === 'function') {
-      observer = new MutationObserver(check);
-      observer.observe(root, { childList: true, subtree: true, characterData: true });
-    }
-
-    timeoutId = setTimeout(() => {
-      finish(locate() || {
-        sessionTitle: cleanTitle(document.title),
-        response: 'Response finished.'
-      });
-    }, Math.max(1000, Number(timeoutMs) || 30000));
-
-    check();
-  });
-}
-
-async function getNotificationContent(tabId) {
-  let fallbackTitle = 'ChatGPT';
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    fallbackTitle = cleanSessionTitle(tab.title);
-  } catch {}
-
-  try {
-    const injection = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: extractAnswerBoundToLatestPrompt,
-      args: [FINAL_TURN_WAIT_MS]
-    });
-    const result = injection?.[0]?.result || {};
-    return {
-      title: cleanSessionTitle(result.sessionTitle || fallbackTitle),
-      message: truncateResponse(result.response)
-    };
-  } catch (error) {
-    console.warn('ChatGPT Prompt-Bound Alert: answer extraction failed', error);
-    return { title: fallbackTitle, message: 'Response finished.' };
-  }
-}
-
 async function emitBoth({ tabId = null, title = 'ChatGPT', message = 'Response finished.', isTest = false } = {}) {
   const id = isTest
     ? `chatgpt-prompt-bound-test:${Date.now()}`
@@ -230,16 +99,49 @@ async function emitBoth({ tabId = null, title = 'ChatGPT', message = 'Response f
   }
 }
 
+async function signalConversationRequestCompleted(tabId) {
+  const message = { type: 'CHATGPT_CONVERSATION_REQUEST_COMPLETED' };
+  try {
+    await chrome.tabs.sendMessage(tabId, message);
+    return;
+  } catch {}
+
+  // Handles tabs that were already open when the unpacked extension was
+  // reloaded. The content script has an install guard, so reinjection is safe.
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content-script.js']
+    });
+    await chrome.tabs.sendMessage(tabId, message);
+  } catch (error) {
+    console.warn('Prompt-Bound Alert: could not arm tab completion watcher', error);
+  }
+}
+
 chrome.webRequest.onCompleted.addListener((details) => {
   if (!isAnswerStreamRequest(details)) return;
   if (details.statusCode < 200 || details.statusCode >= 300) return;
-
-  getNotificationContent(details.tabId)
-    .then(({ title, message }) => emitBoth({ tabId: details.tabId, title, message }))
-    .catch((error) => console.error('Prompt-Bound Alert: completion alert failed', error));
+  signalConversationRequestCompleted(details.tabId).catch(() => {});
 }, CHATGPT_REQUEST_FILTER);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'CHATGPT_RESPONSE_COMPLETE') {
+    const tabId = sender.tab?.id;
+    if (typeof tabId !== 'number') return;
+
+    const fingerprint = String(message.fingerprint || '');
+    if (fingerprint && lastNotificationFingerprintByTab.get(tabId) === fingerprint) return;
+    if (fingerprint) lastNotificationFingerprintByTab.set(tabId, fingerprint);
+
+    emitBoth({
+      tabId,
+      title: cleanSessionTitle(message.sessionTitle),
+      message: truncateResponse(message.response)
+    }).catch((error) => console.error('Prompt-Bound Alert: completion alert failed', error));
+    return;
+  }
+
   if (message?.type === 'TEST_BOTH') {
     emitBoth({
       isTest: true,
@@ -248,6 +150,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => sendResponse({ ok: false, error: String(error?.message || error) }));
     return true;
   }
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  lastNotificationFingerprintByTab.delete(tabId);
 });
 
 chrome.notifications.onClicked.addListener(async (notificationId) => {
