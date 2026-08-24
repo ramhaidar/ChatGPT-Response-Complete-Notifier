@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ChatGPT Prompt-Bound Completion Alert
 // @namespace    local.chatgpt.prompt-bound-ready
-// @version      1.0.5
-// @description  Sound + native notification when ChatGPT finishes. Preview is structurally bound to the latest user prompt so the previous answer cannot be selected.
+// @version      1.0.6
+// @description  Sound + native notification when ChatGPT finishes, including Work mode. Waits through transient Working status turns before alerting.
 // @author       Local
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAADR0lEQVR4nO2dXXIiMQwGzdYeYS7B/Q/DcbJPVLEkBHuQ9fd1PxPiSG3J9jg1l+M4vgbI8id6ABALAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOL8jR7AGGPcbrfoIYRwvV6jhzAuURdCVJP+iigZ3AUg8b/jLYKbACR+DS8RXBaBJH8dr5htrQAk3oad1WBbBSD5duyM5RYBSL49u2Ka4hxgjBx7Yk+yTBLzNcDKH6aW9FdExsy0BZD8c6zEwrpyuLcAEv8z97h4twazCjAzcJL/npkYWUrC00BxTARg9tviWQVcKgDJX6fVswDIy8cCZDnQUMQi9tsrAOX/PB6xS3MU7MW7WaMmrIQAK6Xy8bMKMrQW4NMeef/5ziK0FMB6YdpZhHbbwJ27ko47nlYCeCSomwRtBPBMTCcJWggQkZAuEpQXIDIRHSQovQs4m4BXq/kz33e73UrvDkoLsMq7REXdyomkbAtYvX+4MktXP19ZmJICeF0+VZCgpACzWPTmyv19hnICzM40y8TNflfFKlBOALClpQA7ynbXVlBKgAoltsIYHyklwAw7Z2rHKtBOAFgDAcQpI0Cl3lpprGUEmMGjR3dbB7QSANZBAHHSPg6u1Ed/4nn8WVsHFUCctBVghqhZ9fx7K1crKoA4CCAOAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOKUvhBS+SJGFqgA4iCAOAggDgKIk3YRWP3mbdb/A3iGCiAOAoiDAOKkXQM8Y9FTebv5d6gA4iCAOAggDgKIIyXA7MJOZQE4hoMA2U7wZl8akQGP2H0sQKaAzfJqzNX+FovxljkHsKZasnfhsgbI1gYq4BUzEwFmZhMSzDMTK6sKJrULgO+YCUAVsMFz9o8RsAjs/Cr2T4iaHKYtQOE1azuIfEp5OY7jy/Qbx7nkqlWELDFKcw5ARYhhyy5AbTZ7sCum27aBSGDHzlhuWQM8Q3k/h8ckcjkIohqs4xUzlwrwCNXgd7wni7sAdxDhf6KqZJgAj6jKkKE1phAA4uBpoDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOIggDgIIA4CiPMPMxH82wgo8LsAAAAASUVORK5CYII=
 // @match        https://chatgpt.com/*
@@ -18,10 +18,10 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.0.5';
+  const VERSION = '1.0.6';
   const NOTIFICATION_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAADR0lEQVR4nO2dXXIiMQwGzdYeYS7B/Q/DcbJPVLEkBHuQ9fd1PxPiSG3J9jg1l+M4vgbI8id6ABALAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOL8jR7AGGPcbrfoIYRwvV6jhzAuURdCVJP+iigZ3AUg8b/jLYKbACR+DS8RXBaBJH8dr5htrQAk3oad1WBbBSD5duyM5RYBSL49u2Ka4hxgjBx7Yk+yTBLzNcDKH6aW9FdExsy0BZD8c6zEwrpyuLcAEv8z97h4twazCjAzcJL/npkYWUrC00BxTARg9tviWQVcKgDJX6fVswDIy8cCZDnQUMQi9tsrAOX/PB6xS3MU7MW7WaMmrIQAK6Xy8bMKMrQW4NMeef/5ziK0FMB6YdpZhHbbwJ27ko47nlYCeCSomwRtBPBMTCcJWggQkZAuEpQXIDIRHSQovQs4m4BXq/kz33e73UrvDkoLsMq7REXdyomkbAtYvX+4MktXP19ZmJICeF0+VZCgpACzWPTmyv19hnICzM40y8TNflfFKlBOALClpQA7ynbXVlBKgAoltsIYHyklwAw7Z2rHKtBOAFgDAcQpI0Cl3lpprGUEmMGjR3dbB7QSANZBAHHSPg6u1Ed/4nn8WVsHFUCctBVghqhZ9fx7K1crKoA4CCAOAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOKUvhBS+SJGFqgA4iCAOAggDgKIk3YRWP3mbdb/A3iGCiAOAoiDAOKkXQM8Y9FTebv5d6gA4iCAOAggDgKIIyXA7MJOZQE4hoMA2U7wZl8akQGP2H0sQKaAzfJqzNX+FovxljkHsKZasnfhsgbI1gYq4BUzEwFmZhMSzDMTK6sKJrULgO+YCUAVsMFz9o8RsAjs/Cr2T4iaHKYtQOE1azuIfEp5OY7jy/Qbx7nkqlWELDFKcw5ARYhhyy5AbTZ7sCum27aBSGDHzlhuWQM8Q3k/h8ckcjkIohqs4xUzlwrwCNXgd7wni7sAdxDhf6KqZJgAj6jKkKE1phAA4uBpoDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOIggDgIIA4CiPMPMxH82wgo8LsAAAAASUVORK5CYII=';
   const RESPONSE_PREVIEW_MAX_CHARS = 260;
-  const FINAL_TURN_WAIT_MS = 30000;
+  const FINAL_TURN_WAIT_MS = 90 * 60 * 1000;
   const CONVERSATION_PATHS = new Set([
     '/backend-api/f/conversation',
     '/backend-api/conversation'
@@ -31,6 +31,8 @@
   let audioContext = null;
   let lastManualStopEpoch = 0;
   let lastCompletionEpoch = 0;
+  let activeCompletionWatch = null;
+  let lastNotificationFingerprint = "";
   const processedEntries = new Set();
 
   const log = (...args) => console.debug('[ChatGPT Prompt-Bound Alert]', ...args);
@@ -95,55 +97,150 @@
     }
   }
 
-  function answerBoundToLatestPrompt() {
+  function isTransientStatus(text) {
+    const value = normalize(text).toLowerCase();
+    if (!value) return true;
+    if (value.length > 120) return false;
+
+    const compact = value
+      .replace(/[.。!！…⋯]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return /^(?:working|thinking|generating|processing|preparing|starting|analyzing|searching|browsing|running|executing|creating|building|coding|writing|reading|reviewing|waiting)(?:\s+(?:on it|for results|for a response|for response|for tool results|for tools))?$/.test(compact);
+  }
+
+  function isGenerationActive() {
+    try {
+      const selectors = [
+        'button[data-testid="stop-button"]',
+        'button[data-testid="fruitjuice-stop-button"]',
+        'button[aria-label="Stop generating"]',
+        'button[aria-label^="Stop"]',
+        'button[title^="Stop"]'
+      ];
+      return Array.from(document.querySelectorAll(selectors.join(','))).some((node) => {
+        if (node.hidden || node.getAttribute('aria-hidden') === 'true') return false;
+        const style = getComputedStyle(node);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  function latestPromptSnapshot() {
     const turns = turnNodes();
     let latestUserIndex = -1;
     for (let i = 0; i < turns.length; i += 1) {
       if (roleOf(turns[i]) === 'user') latestUserIndex = i;
     }
-    if (latestUserIndex < 0) return '';
+    if (latestUserIndex < 0) return null;
 
-    let candidate = '';
+    let assistantIndex = -1;
+    let response = '';
     for (let i = latestUserIndex + 1; i < turns.length; i += 1) {
       if (roleOf(turns[i]) !== 'assistant') continue;
       const text = assistantText(turns[i]);
-      if (text) candidate = text;
+      if (!text) continue;
+      assistantIndex = i;
+      response = text;
     }
-    return candidate;
+    if (!response || assistantIndex < 0) return null;
+
+    const userTurn = turns[latestUserIndex];
+    const assistantTurn = turns[assistantIndex];
+    return {
+      response,
+      promptKey: [
+        location.pathname,
+        userTurn?.getAttribute('data-testid') || `user-${latestUserIndex}`
+      ].join('|'),
+      assistantKey: assistantTurn?.getAttribute('data-testid') || `assistant-${assistantIndex}`
+    };
   }
 
-  function waitForAnswerBoundToLatestPrompt() {
-    const immediate = answerBoundToLatestPrompt();
+  function readyPromptSnapshot() {
+    const snapshot = latestPromptSnapshot();
+    if (!snapshot) return null;
+    if (isTransientStatus(snapshot.response)) return null;
+    if (isGenerationActive()) return null;
+    return snapshot;
+  }
+
+  function answerBoundToLatestPrompt() {
+    return latestPromptSnapshot()?.response || '';
+  }
+
+  function waitForFinalAnswerBoundToLatestPrompt() {
+    const immediate = readyPromptSnapshot();
     if (immediate) return Promise.resolve(immediate);
 
     return new Promise((resolve) => {
       let settled = false;
       let observer = null;
       let timeoutId = null;
+      let verifyId = null;
+      let pendingSignature = '';
 
-      const finish = (text) => {
+      const finish = (result) => {
         if (settled) return;
         settled = true;
         if (observer) observer.disconnect();
         if (timeoutId !== null) clearTimeout(timeoutId);
-        resolve(text);
+        if (verifyId !== null) clearTimeout(verifyId);
+        document.removeEventListener('visibilitychange', check, true);
+        resolve(result);
       };
 
-      const check = () => {
-        const text = answerBoundToLatestPrompt();
-        if (text) finish(text);
+      const verify = (signature) => {
+        verifyId = null;
+        const result = readyPromptSnapshot();
+        if (!result) {
+          pendingSignature = '';
+          return;
+        }
+        const currentSignature = `${result.promptKey}|${result.assistantKey}|${result.response}`;
+        if (currentSignature !== signature) {
+          pendingSignature = '';
+          check();
+          return;
+        }
+        finish(result);
       };
+
+      function check() {
+        if (settled) return;
+        const result = readyPromptSnapshot();
+        if (!result) {
+          pendingSignature = '';
+          if (verifyId !== null) {
+            clearTimeout(verifyId);
+            verifyId = null;
+          }
+          return;
+        }
+
+        const signature = `${result.promptKey}|${result.assistantKey}|${result.response}`;
+        if (document.visibilityState !== 'visible') {
+          finish(result);
+          return;
+        }
+
+        if (signature === pendingSignature && verifyId !== null) return;
+        pendingSignature = signature;
+        if (verifyId !== null) clearTimeout(verifyId);
+        verifyId = setTimeout(() => verify(signature), 700);
+      }
 
       const root = document.body || document.documentElement;
       if (root && typeof MutationObserver === 'function') {
         observer = new MutationObserver(check);
-        observer.observe(root, { childList: true, subtree: true, characterData: true });
+        observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true });
       }
 
-      timeoutId = setTimeout(() => {
-        finish(answerBoundToLatestPrompt() || 'Response finished.');
-      }, FINAL_TURN_WAIT_MS);
-
+      document.addEventListener('visibilitychange', check, true);
+      timeoutId = setTimeout(() => finish(null), FINAL_TURN_WAIT_MS);
       check();
     });
   }
@@ -288,9 +385,26 @@
     if (now - lastCompletionEpoch < 400) return;
     lastCompletionEpoch = now;
 
-    log('Conversation request completed; resolving assistant turn after latest user turn.');
-    const responseText = await waitForAnswerBoundToLatestPrompt();
-    await showReadyNotification(responseText);
+    if (activeCompletionWatch) {
+      log('Completion watcher already active; reusing the prompt-bound DOM watcher.');
+      return;
+    }
+
+    log('Conversation request completed; waiting through transient Work status if needed.');
+    activeCompletionWatch = waitForFinalAnswerBoundToLatestPrompt();
+
+    try {
+      const snapshot = await activeCompletionWatch;
+      if (!snapshot?.response) return;
+
+      const fingerprint = `${snapshot.promptKey}|${snapshot.assistantKey}|${snapshot.response.slice(0, 1000)}`;
+      if (fingerprint === lastNotificationFingerprint) return;
+      lastNotificationFingerprint = fingerprint;
+
+      await showReadyNotification(snapshot.response);
+    } finally {
+      activeCompletionWatch = null;
+    }
   }
 
   function processResourceEntries(entries) {
@@ -345,6 +459,7 @@
       version: VERSION,
       title: document.title,
       resolvedLatestAnswer: answerBoundToLatestPrompt().slice(0, 260),
+      readyForNotification: Boolean(readyPromptSnapshot()),
       turns
     });
   });
