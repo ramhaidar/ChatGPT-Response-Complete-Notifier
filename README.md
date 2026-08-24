@@ -30,7 +30,7 @@ This repository ships the same behavior in two forms.
 
 Use [`extension/`](./extension/) if you want the strongest background-tab behavior on Chrome, Edge, Brave, Vivaldi, and other Chromium browsers.
 
-The extension uses a Manifest V3 service worker and listens for ChatGPT's conversation request to complete at the browser network layer. Once complete, it reads the answer associated with the latest user turn, plays the sound through an offscreen document, and emits the native notification.
+The extension uses a Manifest V3 service worker to detect ChatGPT conversation-request completion, then arms a small content-script watcher for the prompt-bound final turn. In normal Chat mode the final turn is usually ready immediately. In Work mode, transient status turns such as `Working` are ignored and the watcher stays armed until the real response is rendered and generation has stopped. The service worker then plays the sound through an offscreen document and emits the native notification.
 
 **Requirements:** Chromium 116 or newer.
 
@@ -43,7 +43,7 @@ Recommended managers:
 - [Tampermonkey](https://www.tampermonkey.net/)
 - [Violentmonkey](https://violentmonkey.github.io/)
 
-The userscript observes completion of the same ChatGPT conversation resource, then uses the userscript notification API plus background-capable audio. It does not depend on periodically checking whether the page looks finished.
+The userscript observes completion of the same ChatGPT conversation resource, then keeps a prompt-bound DOM watcher armed when Work mode is still showing a transient status. It uses the userscript notification API plus background-capable audio and does not use a polling loop.
 
 ## Install
 
@@ -85,10 +85,13 @@ ChatGPT streams the answer
 Conversation network request completes
       |
       v
-Find the latest user turn
+Arm prompt-bound completion watcher
       |
       v
-Read only an assistant turn after that prompt
+Ignore transient Work status (Working, Thinking, etc.)
+      |
+      v
+Read the final assistant turn after that prompt
       |
       +-------------------+
       |                   |
@@ -129,6 +132,7 @@ There is also no separate Firefox extension package. Firefox users who want to t
 ├── extension/
 │   ├── manifest.json
 │   ├── service-worker.js
+│   ├── content-script.js
 │   ├── offscreen.html
 │   ├── offscreen.js
 │   ├── popup.html
