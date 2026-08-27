@@ -5,11 +5,30 @@
   globalThis.__chatgptPromptBoundNotifierInstalled = true;
 
   const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
-  let armed = false;
-  let armedPromptKey = '';
+  const FINAL_TURN_WAIT_MS = 30000;
+  const ANSWER_CHECK_THROTTLE_MS = 150;
+  let watchToken = 0;
   let lastSentFingerprint = '';
-  let verifyId = null;
-  let pendingSignature = '';
+  let suppressUntilEpoch = 0;
+
+  function pageIsActive() {
+    try {
+      return document.visibilityState === 'visible' && document.hasFocus();
+    } catch {
+      return document.visibilityState === 'visible';
+    }
+  }
+
+  function notifyPageReturned() {
+    chrome.runtime.sendMessage({ type: 'CHATGPT_PAGE_RETURNED' }).catch(() => {});
+  }
+
+  window.addEventListener('focus', notifyPageReturned, true);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') notifyPageReturned();
+  }, true);
+  document.addEventListener('pointerdown', notifyPageReturned, { capture: true, passive: true });
+  document.addEventListener('keydown', notifyPageReturned, { capture: true, passive: true });
 
   function turnNodes() {
     try {
@@ -43,46 +62,11 @@
       const rendered = roleNode.querySelector('.markdown, [class*="prose"]');
       return normalize(
         rendered
-          ? (rendered.innerText || rendered.textContent || '')
-          : (roleNode.innerText || roleNode.textContent || '')
+          ? (rendered.textContent || rendered.innerText || '')
+          : (roleNode.textContent || roleNode.innerText || '')
       );
     } catch {
       return '';
-    }
-  }
-
-  function isTransientStatus(text) {
-    const value = normalize(text).toLowerCase();
-    if (!value) return true;
-    if (value.length > 120) return false;
-
-    const compact = value
-      .replace(/[.。!！…⋯]+$/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    // Work initially renders a short status turn such as "Working" even
-    // though the actual background task is still running. Never treat these
-    // short status-only turns as a completed answer.
-    return /^(?:working|thinking|generating|processing|preparing|starting|analyzing|searching|browsing|running|executing|creating|building|coding|writing|reading|reviewing|waiting)(?:\s+(?:on it|for results|for a response|for response|for tool results|for tools))?$/.test(compact);
-  }
-
-  function isGenerationActive() {
-    try {
-      const selectors = [
-        'button[data-testid="stop-button"]',
-        'button[data-testid="fruitjuice-stop-button"]',
-        'button[aria-label="Stop generating"]',
-        'button[aria-label^="Stop"]',
-        'button[title^="Stop"]'
-      ];
-      return Array.from(document.querySelectorAll(selectors.join(','))).some((node) => {
-        if (node.hidden || node.getAttribute('aria-hidden') === 'true') return false;
-        const style = getComputedStyle(node);
-        return style.display !== 'none' && style.visibility !== 'hidden';
-      });
-    } catch {
-      return false;
     }
   }
 
@@ -122,111 +106,143 @@
     };
   }
 
-  function readySnapshot() {
-    const snapshot = latestPromptSnapshot();
-    if (!snapshot?.response) return null;
-    if (armedPromptKey && snapshot.promptKey !== armedPromptKey) return null;
-    if (isTransientStatus(snapshot.response)) return null;
-    if (isGenerationActive()) return null;
-    return snapshot;
+  function answerBoundToLatestPrompt() {
+    return latestPromptSnapshot()?.response || '';
   }
 
-  function clearVerification() {
-    pendingSignature = '';
-    if (verifyId !== null) {
-      clearTimeout(verifyId);
-      verifyId = null;
+  function conversationObserverRoot() {
+    const turns = turnNodes();
+    const latestTurn = turns[turns.length - 1];
+    if (latestTurn) {
+      const main = latestTurn.closest?.('main');
+      if (main) return main;
+      if (latestTurn.parentElement) return latestTurn.parentElement;
     }
+    return document.querySelector('main') || document.body || document.documentElement;
+  }
+
+  function waitForAnswerBoundToLatestPrompt() {
+    const immediate = answerBoundToLatestPrompt();
+    if (immediate) return Promise.resolve(immediate);
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let observer = null;
+      let timeoutId = null;
+      let throttleId = null;
+      let frameId = null;
+      let lastCheckAt = 0;
+
+      const cleanupScheduledCheck = () => {
+        if (throttleId !== null) {
+          clearTimeout(throttleId);
+          throttleId = null;
+        }
+        if (frameId !== null && typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(frameId);
+          frameId = null;
+        }
+      };
+
+      const finish = (text) => {
+        if (settled) return;
+        settled = true;
+        if (observer) observer.disconnect();
+        if (timeoutId !== null) clearTimeout(timeoutId);
+        cleanupScheduledCheck();
+        resolve(text);
+      };
+
+      const check = () => {
+        if (settled) return;
+        lastCheckAt = performance.now();
+        const text = answerBoundToLatestPrompt();
+        if (text) finish(text);
+      };
+
+      const scheduleCheck = () => {
+        if (settled || throttleId !== null || frameId !== null) return;
+        const elapsed = performance.now() - lastCheckAt;
+        const delay = Math.max(0, ANSWER_CHECK_THROTTLE_MS - elapsed);
+        throttleId = setTimeout(() => {
+          throttleId = null;
+          const run = () => {
+            frameId = null;
+            check();
+          };
+          if (typeof requestAnimationFrame === 'function') {
+            frameId = requestAnimationFrame(run);
+          } else {
+            run();
+          }
+        }, delay);
+      };
+
+      const root = conversationObserverRoot();
+      if (root && typeof MutationObserver === 'function') {
+        observer = new MutationObserver(scheduleCheck);
+        observer.observe(root, { childList: true, subtree: true, characterData: true });
+      }
+
+      timeoutId = setTimeout(() => {
+        finish(answerBoundToLatestPrompt() || 'Response finished.');
+      }, FINAL_TURN_WAIT_MS);
+
+      check();
+    });
   }
 
   function sendCompletion(snapshot) {
     const fingerprint = `${snapshot.promptKey}|${snapshot.assistantKey}|${snapshot.response.slice(0, 1000)}`;
-    if (fingerprint === lastSentFingerprint) {
-      armed = false;
-      clearVerification();
-      return;
-    }
+    if (fingerprint === lastSentFingerprint) return;
 
     lastSentFingerprint = fingerprint;
-    armed = false;
-    clearVerification();
-
     chrome.runtime.sendMessage({
       type: 'CHATGPT_RESPONSE_COMPLETE',
       sessionTitle: document.title,
       response: snapshot.response,
-      fingerprint
+      fingerprint,
+      dismissOnReturn: !pageIsActive()
     }).catch(() => {});
   }
 
-  function verify(signature) {
-    verifyId = null;
-    if (!armed) return;
-    const snapshot = readySnapshot();
-    if (!snapshot) {
-      pendingSignature = '';
-      return;
-    }
-    const currentSignature = `${snapshot.promptKey}|${snapshot.assistantKey}|${snapshot.response}`;
-    if (currentSignature !== signature) {
-      pendingSignature = '';
-      check();
-      return;
-    }
-    sendCompletion(snapshot);
-  }
-
-  function check() {
-    if (!armed) return;
-    const snapshot = readySnapshot();
-    if (!snapshot) {
-      clearVerification();
-      return;
-    }
-
-    const signature = `${snapshot.promptKey}|${snapshot.assistantKey}|${snapshot.response}`;
-
-    // Background tabs are the main use case and browser timer throttling can
-    // delay short settle timers. Once Work's transient status and the stop
-    // control are both gone, emit immediately in a hidden tab.
-    if (document.visibilityState !== 'visible') {
+  function armForCurrentPrompt() {
+    if (Date.now() < suppressUntilEpoch) return;
+    const snapshot = latestPromptSnapshot();
+    if (snapshot?.response) {
       sendCompletion(snapshot);
       return;
     }
 
-    if (signature === pendingSignature && verifyId !== null) return;
-    pendingSignature = signature;
-    if (verifyId !== null) clearTimeout(verifyId);
-    verifyId = setTimeout(() => verify(signature), 700);
-  }
-
-  function armForCurrentPrompt() {
-    const snapshot = latestPromptSnapshot();
-    armedPromptKey = snapshot?.promptKey || '';
-    armed = true;
-    clearVerification();
-    check();
+    const token = watchToken;
+    waitForAnswerBoundToLatestPrompt()
+      .then((text) => {
+        if (token !== watchToken) return;
+        const resolved = latestPromptSnapshot();
+        if (resolved?.response) {
+          sendCompletion(resolved);
+        } else {
+          sendCompletion({
+            promptKey: '',
+            assistantKey: '',
+            response: text
+          });
+        }
+      });
   }
 
   function isStopButton(node) {
     if (!(node instanceof Element)) return false;
-    return Boolean(node.closest(
-      'button[data-testid="stop-button"], button[data-testid="fruitjuice-stop-button"], button[aria-label^="Stop"], button[title^="Stop"]'
-    ));
+    return Boolean(node.closest('button[data-testid="stop-button"], button[data-testid="fruitjuice-stop-button"]'));
   }
 
   document.addEventListener('click', (event) => {
-    if (!armed || !isStopButton(event.target)) return;
+    if (!isStopButton(event.target)) return;
     // A manual stop is not a successful completion. The next conversation
     // request will arm the watcher again.
-    armed = false;
-    armedPromptKey = '';
-    clearVerification();
+    watchToken += 1;
+    suppressUntilEpoch = Date.now() + 1500;
   }, true);
-
-  const observer = new MutationObserver(check);
-  observer.observe(document, { childList: true, subtree: true, characterData: true, attributes: true });
-  document.addEventListener('visibilitychange', check, true);
 
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type === 'CHATGPT_CONVERSATION_REQUEST_COMPLETED') {
