@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ChatGPT Prompt-Bound Completion Alert
 // @namespace    local.chatgpt.prompt-bound-ready
-// @version      1.0.6
-// @description  Sound + native notification when ChatGPT finishes, including Work mode. Waits through transient Working status turns before alerting.
+// @version      1.0.8
+// @description  Sound + native notification when ChatGPT finishes. Preview is structurally bound to the latest user prompt so the previous answer cannot be selected.
 // @author       Local
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAADR0lEQVR4nO2dXXIiMQwGzdYeYS7B/Q/DcbJPVLEkBHuQ9fd1PxPiSG3J9jg1l+M4vgbI8id6ABALAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOL8jR7AGGPcbrfoIYRwvV6jhzAuURdCVJP+iigZ3AUg8b/jLYKbACR+DS8RXBaBJH8dr5htrQAk3oad1WBbBSD5duyM5RYBSL49u2Ka4hxgjBx7Yk+yTBLzNcDKH6aW9FdExsy0BZD8c6zEwrpyuLcAEv8z97h4twazCjAzcJL/npkYWUrC00BxTARg9tviWQVcKgDJX6fVswDIy8cCZDnQUMQi9tsrAOX/PB6xS3MU7MW7WaMmrIQAK6Xy8bMKMrQW4NMeef/5ziK0FMB6YdpZhHbbwJ27ko47nlYCeCSomwRtBPBMTCcJWggQkZAuEpQXIDIRHSQovQs4m4BXq/kz33e73UrvDkoLsMq7REXdyomkbAtYvX+4MktXP19ZmJICeF0+VZCgpACzWPTmyv19hnICzM40y8TNflfFKlBOALClpQA7ynbXVlBKgAoltsIYHyklwAw7Z2rHKtBOAFgDAcQpI0Cl3lpprGUEmMGjR3dbB7QSANZBAHHSPg6u1Ed/4nn8WVsHFUCctBVghqhZ9fx7K1crKoA4CCAOAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOKUvhBS+SJGFqgA4iCAOAggDgKIk3YRWP3mbdb/A3iGCiAOAoiDAOKkXQM8Y9FTebv5d6gA4iCAOAggDgKIIyXA7MJOZQE4hoMA2U7wZl8akQGP2H0sQKaAzfJqzNX+FovxljkHsKZasnfhsgbI1gYq4BUzEwFmZhMSzDMTK6sKJrULgO+YCUAVsMFz9o8RsAjs/Cr2T4iaHKYtQOE1azuIfEp5OY7jy/Qbx7nkqlWELDFKcw5ARYhhyy5AbTZ7sCum27aBSGDHzlhuWQM8Q3k/h8ckcjkIohqs4xUzlwrwCNXgd7wni7sAdxDhf6KqZJgAj6jKkKE1phAA4uBpoDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOIggDgIIA4CiPMPMxH82wgo8LsAAAAASUVORK5CYII=
 // @match        https://chatgpt.com/*
@@ -18,10 +18,15 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.0.6';
+  const VERSION = '1.0.8';
   const NOTIFICATION_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAADR0lEQVR4nO2dXXIiMQwGzdYeYS7B/Q/DcbJPVLEkBHuQ9fd1PxPiSG3J9jg1l+M4vgbI8id6ABALAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOL8jR7AGGPcbrfoIYRwvV6jhzAuURdCVJP+iigZ3AUg8b/jLYKbACR+DS8RXBaBJH8dr5htrQAk3oad1WBbBSD5duyM5RYBSL49u2Ka4hxgjBx7Yk+yTBLzNcDKH6aW9FdExsy0BZD8c6zEwrpyuLcAEv8z97h4twazCjAzcJL/npkYWUrC00BxTARg9tviWQVcKgDJX6fVswDIy8cCZDnQUMQi9tsrAOX/PB6xS3MU7MW7WaMmrIQAK6Xy8bMKMrQW4NMeef/5ziK0FMB6YdpZhHbbwJ27ko47nlYCeCSomwRtBPBMTCcJWggQkZAuEpQXIDIRHSQovQs4m4BXq/kz33e73UrvDkoLsMq7REXdyomkbAtYvX+4MktXP19ZmJICeF0+VZCgpACzWPTmyv19hnICzM40y8TNflfFKlBOALClpQA7ynbXVlBKgAoltsIYHyklwAw7Z2rHKtBOAFgDAcQpI0Cl3lpprGUEmMGjR3dbB7QSANZBAHHSPg6u1Ed/4nn8WVsHFUCctBVghqhZ9fx7K1crKoA4CCAOAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOKUvhBS+SJGFqgA4iCAOAggDgKIk3YRWP3mbdb/A3iGCiAOAoiDAOKkXQM8Y9FTebv5d6gA4iCAOAggDgKIIyXA7MJOZQE4hoMA2U7wZl8akQGP2H0sQKaAzfJqzNX+FovxljkHsKZasnfhsgbI1gYq4BUzEwFmZhMSzDMTK6sKJrULgO+YCUAVsMFz9o8RsAjs/Cr2T4iaHKYtQOE1azuIfEp5OY7jy/Qbx7nkqlWELDFKcw5ARYhhyy5AbTZ7sCum27aBSGDHzlhuWQM8Q3k/h8ckcjkIohqs4xUzlwrwCNXgd7wni7sAdxDhf6KqZJgAj6jKkKE1phAA4uBpoDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOIggDgIIA4CiPMPMxH82wgo8LsAAAAASUVORK5CYII=';
   const RESPONSE_PREVIEW_MAX_CHARS = 260;
-  const FINAL_TURN_WAIT_MS = 90 * 60 * 1000;
+  const FINAL_TURN_WAIT_MS = 30000;
+  const ANSWER_CHECK_THROTTLE_MS = 150;
+  const MAX_PROCESSED_ENTRIES = 100;
+  const NOTIFICATION_TIMEOUT_MS = 8000;
+  const RETURN_DISMISS_GRACE_MS = 500;
+  const ACTIVE_NOTIFICATION_STORAGE_KEY = 'chatgpt-prompt-bound-active-notification';
   const CONVERSATION_PATHS = new Set([
     '/backend-api/f/conversation',
     '/backend-api/conversation'
@@ -31,9 +36,16 @@
   let audioContext = null;
   let lastManualStopEpoch = 0;
   let lastCompletionEpoch = 0;
-  let activeCompletionWatch = null;
-  let lastNotificationFingerprint = "";
+  let activeNotification = null;
   const processedEntries = new Set();
+  const resourceTimingDiagnostics = {
+    seen: 0,
+    conversationCandidates: 0,
+    accepted: 0,
+    rejectedStatus: 0,
+    lastResponseStatus: null,
+    clears: 0
+  };
 
   const log = (...args) => console.debug('[ChatGPT Prompt-Bound Alert]', ...args);
   const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
@@ -89,158 +101,109 @@
       const rendered = roleNode.querySelector('.markdown, [class*="prose"]');
       return normalize(
         rendered
-          ? (rendered.innerText || rendered.textContent || '')
-          : (roleNode.innerText || roleNode.textContent || '')
+          ? (rendered.textContent || rendered.innerText || '')
+          : (roleNode.textContent || roleNode.innerText || '')
       );
     } catch {
       return '';
     }
   }
 
-  function isTransientStatus(text) {
-    const value = normalize(text).toLowerCase();
-    if (!value) return true;
-    if (value.length > 120) return false;
-
-    const compact = value
-      .replace(/[.。!！…⋯]+$/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    return /^(?:working|thinking|generating|processing|preparing|starting|analyzing|searching|browsing|running|executing|creating|building|coding|writing|reading|reviewing|waiting)(?:\s+(?:on it|for results|for a response|for response|for tool results|for tools))?$/.test(compact);
-  }
-
-  function isGenerationActive() {
-    try {
-      const selectors = [
-        'button[data-testid="stop-button"]',
-        'button[data-testid="fruitjuice-stop-button"]',
-        'button[aria-label="Stop generating"]',
-        'button[aria-label^="Stop"]',
-        'button[title^="Stop"]'
-      ];
-      return Array.from(document.querySelectorAll(selectors.join(','))).some((node) => {
-        if (node.hidden || node.getAttribute('aria-hidden') === 'true') return false;
-        const style = getComputedStyle(node);
-        return style.display !== 'none' && style.visibility !== 'hidden';
-      });
-    } catch {
-      return false;
-    }
-  }
-
-  function latestPromptSnapshot() {
+  function answerBoundToLatestPrompt() {
     const turns = turnNodes();
     let latestUserIndex = -1;
     for (let i = 0; i < turns.length; i += 1) {
       if (roleOf(turns[i]) === 'user') latestUserIndex = i;
     }
-    if (latestUserIndex < 0) return null;
+    if (latestUserIndex < 0) return '';
 
-    let assistantIndex = -1;
-    let response = '';
+    let candidate = '';
     for (let i = latestUserIndex + 1; i < turns.length; i += 1) {
       if (roleOf(turns[i]) !== 'assistant') continue;
       const text = assistantText(turns[i]);
-      if (!text) continue;
-      assistantIndex = i;
-      response = text;
+      if (text) candidate = text;
     }
-    if (!response || assistantIndex < 0) return null;
-
-    const userTurn = turns[latestUserIndex];
-    const assistantTurn = turns[assistantIndex];
-    return {
-      response,
-      promptKey: [
-        location.pathname,
-        userTurn?.getAttribute('data-testid') || `user-${latestUserIndex}`
-      ].join('|'),
-      assistantKey: assistantTurn?.getAttribute('data-testid') || `assistant-${assistantIndex}`
-    };
+    return candidate;
   }
 
-  function readyPromptSnapshot() {
-    const snapshot = latestPromptSnapshot();
-    if (!snapshot) return null;
-    if (isTransientStatus(snapshot.response)) return null;
-    if (isGenerationActive()) return null;
-    return snapshot;
+  function conversationObserverRoot() {
+    const turns = turnNodes();
+    const latestTurn = turns[turns.length - 1];
+    if (latestTurn) {
+      const main = latestTurn.closest?.('main');
+      if (main) return main;
+      if (latestTurn.parentElement) return latestTurn.parentElement;
+    }
+    return document.querySelector('main') || document.body || document.documentElement;
   }
 
-  function answerBoundToLatestPrompt() {
-    return latestPromptSnapshot()?.response || '';
-  }
-
-  function waitForFinalAnswerBoundToLatestPrompt() {
-    const immediate = readyPromptSnapshot();
+  function waitForAnswerBoundToLatestPrompt() {
+    const immediate = answerBoundToLatestPrompt();
     if (immediate) return Promise.resolve(immediate);
 
     return new Promise((resolve) => {
       let settled = false;
       let observer = null;
       let timeoutId = null;
-      let verifyId = null;
-      let pendingSignature = '';
+      let throttleId = null;
+      let frameId = null;
+      let lastCheckAt = 0;
 
-      const finish = (result) => {
+      const cleanupScheduledCheck = () => {
+        if (throttleId !== null) {
+          clearTimeout(throttleId);
+          throttleId = null;
+        }
+        if (frameId !== null && typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(frameId);
+          frameId = null;
+        }
+      };
+
+      const finish = (text) => {
         if (settled) return;
         settled = true;
         if (observer) observer.disconnect();
         if (timeoutId !== null) clearTimeout(timeoutId);
-        if (verifyId !== null) clearTimeout(verifyId);
-        document.removeEventListener('visibilitychange', check, true);
-        resolve(result);
+        cleanupScheduledCheck();
+        resolve(text);
       };
 
-      const verify = (signature) => {
-        verifyId = null;
-        const result = readyPromptSnapshot();
-        if (!result) {
-          pendingSignature = '';
-          return;
-        }
-        const currentSignature = `${result.promptKey}|${result.assistantKey}|${result.response}`;
-        if (currentSignature !== signature) {
-          pendingSignature = '';
-          check();
-          return;
-        }
-        finish(result);
-      };
-
-      function check() {
+      const check = () => {
         if (settled) return;
-        const result = readyPromptSnapshot();
-        if (!result) {
-          pendingSignature = '';
-          if (verifyId !== null) {
-            clearTimeout(verifyId);
-            verifyId = null;
+        lastCheckAt = performance.now();
+        const text = answerBoundToLatestPrompt();
+        if (text) finish(text);
+      };
+
+      const scheduleCheck = () => {
+        if (settled || throttleId !== null || frameId !== null) return;
+        const elapsed = performance.now() - lastCheckAt;
+        const delay = Math.max(0, ANSWER_CHECK_THROTTLE_MS - elapsed);
+        throttleId = setTimeout(() => {
+          throttleId = null;
+          const run = () => {
+            frameId = null;
+            check();
+          };
+          if (typeof requestAnimationFrame === 'function') {
+            frameId = requestAnimationFrame(run);
+          } else {
+            run();
           }
-          return;
-        }
+        }, delay);
+      };
 
-        const signature = `${result.promptKey}|${result.assistantKey}|${result.response}`;
-        if (document.visibilityState !== 'visible') {
-          finish(result);
-          return;
-        }
-
-        if (signature === pendingSignature && verifyId !== null) return;
-        pendingSignature = signature;
-        if (verifyId !== null) clearTimeout(verifyId);
-        verifyId = setTimeout(() => verify(signature), 700);
-      }
-
-      const root = document.body || document.documentElement;
+      const root = conversationObserverRoot();
       if (root && typeof MutationObserver === 'function') {
-        observer = new MutationObserver(check);
-        observer.observe(root, { childList: true, subtree: true, characterData: true, attributes: true });
+        observer = new MutationObserver(scheduleCheck);
+        observer.observe(root, { childList: true, subtree: true, characterData: true });
       }
 
-      document.addEventListener('visibilitychange', check, true);
-      timeoutId = setTimeout(() => finish(null), FINAL_TURN_WAIT_MS);
+      timeoutId = setTimeout(() => {
+        finish(answerBoundToLatestPrompt() || 'Response finished.');
+      }, FINAL_TURN_WAIT_MS);
+
       check();
     });
   }
@@ -326,11 +289,19 @@
 
   function isConversationResource(entry) {
     if (!entry || entry.entryType !== 'resource') return false;
+    resourceTimingDiagnostics.seen += 1;
     if (!CONVERSATION_PATHS.has(conversationPath(entry.name))) return false;
+    resourceTimingDiagnostics.conversationCandidates += 1;
     if (entry.initiatorType && !['fetch', 'xmlhttprequest'].includes(entry.initiatorType)) return false;
-    if (typeof entry.responseStatus === 'number' && entry.responseStatus !== 0) {
-      if (entry.responseStatus < 200 || entry.responseStatus >= 300) return false;
+
+    const responseStatus = typeof entry.responseStatus === 'number' ? entry.responseStatus : null;
+    resourceTimingDiagnostics.lastResponseStatus = responseStatus;
+    if (responseStatus !== null && responseStatus !== 0 && (responseStatus < 200 || responseStatus >= 300)) {
+      resourceTimingDiagnostics.rejectedStatus += 1;
+      return false;
     }
+
+    resourceTimingDiagnostics.accepted += 1;
     return true;
   }
 
@@ -350,31 +321,241 @@
     return lastManualStopEpoch >= startEpoch - 100 && lastManualStopEpoch <= endEpoch + 1500;
   }
 
+  function rememberActiveNotification(tag) {
+    try { sessionStorage.setItem(ACTIVE_NOTIFICATION_STORAGE_KEY, tag); } catch {}
+  }
+
+  function forgetActiveNotification(tag) {
+    try {
+      if (!tag || sessionStorage.getItem(ACTIVE_NOTIFICATION_STORAGE_KEY) === tag) {
+        sessionStorage.removeItem(ACTIVE_NOTIFICATION_STORAGE_KEY);
+      }
+    } catch {}
+  }
+
+  function makeNotificationTag(kind = 'ready') {
+    const randomPart = Math.random().toString(36).slice(2, 9);
+    return `chatgpt-prompt-bound-${kind}-${Date.now()}-${randomPart}`;
+  }
+
+  function pageIsActive() {
+    try {
+      return document.visibilityState === 'visible' && document.hasFocus();
+    } catch {
+      return document.visibilityState === 'visible';
+    }
+  }
+
+  function replaceTaggedNotificationWithExpiringStub(tag) {
+    if (!tag) return;
+    try {
+      GM_notification({
+        title: 'ChatGPT',
+        text: '\u200B',
+        tag,
+        silent: true,
+        timeout: 1,
+        ondone() {}
+      });
+    } catch {}
+  }
+
+  function clearNotificationTimer(record) {
+    if (!record?.autoCloseTimerId) return;
+    clearTimeout(record.autoCloseTimerId);
+    record.autoCloseTimerId = null;
+  }
+
+  function closeNotificationRecord(record, reason = 'dismiss') {
+    if (!record || record.closed) return;
+    record.closed = true;
+    clearNotificationTimer(record);
+
+    if (activeNotification === record) activeNotification = null;
+    forgetActiveNotification(record.tag);
+
+    try {
+      if (record.control && typeof record.control.remove === 'function') {
+        Promise.resolve(record.control.remove()).catch(() => {});
+        log('Notification dismissed:', reason);
+        return;
+      }
+    } catch {}
+
+    // Tampermonkey legacy GM_notification does not expose a close handle.
+    // Reusing the same unique tag replaces the old notification with a 1 ms stub.
+    replaceTaggedNotificationWithExpiringStub(record.tag);
+    log('Notification dismissed via tag replacement:', reason);
+  }
+
+  function dismissReadyNotification(reason = 'page-return') {
+    const current = activeNotification;
+    if (current) {
+      closeNotificationRecord(current, reason);
+      return;
+    }
+
+    const storedTag = (() => {
+      try { return sessionStorage.getItem(ACTIVE_NOTIFICATION_STORAGE_KEY); } catch { return null; }
+    })();
+    if (!storedTag) return;
+
+    forgetActiveNotification(storedTag);
+    replaceTaggedNotificationWithExpiringStub(storedTag);
+    log('Stored notification dismissed:', reason);
+  }
+
+  function dismissNotificationAfterRealPageReturn(reason) {
+    const current = activeNotification;
+    if (!current?.dismissOnReturn) return;
+    if (Date.now() < current.returnDismissArmedAt) return;
+    if (pageIsActive()) closeNotificationRecord(current, reason);
+  }
+
+  // A short grace prevents a focus event caused by opening/closing a userscript
+  // manager popup from instantly dismissing a newly-created notification.
+  window.addEventListener('focus', () => {
+    dismissNotificationAfterRealPageReturn('window-focus');
+  }, true);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      dismissNotificationAfterRealPageReturn('visibility-visible');
+    }
+  }, true);
+
+  document.addEventListener('pointerdown', () => {
+    dismissNotificationAfterRealPageReturn('page-interaction');
+  }, { capture: true, passive: true });
+
+  document.addEventListener('keydown', () => {
+    dismissNotificationAfterRealPageReturn('page-interaction');
+  }, { capture: true, passive: true });
+
+  // Clear a notification that survived reload/navigation before creating a new one.
+  queueMicrotask(() => {
+    const staleTag = (() => {
+      try { return sessionStorage.getItem(ACTIVE_NOTIFICATION_STORAGE_KEY); } catch { return null; }
+    })();
+    if (!staleTag) return;
+    forgetActiveNotification(staleTag);
+    replaceTaggedNotificationWithExpiringStub(staleTag);
+    log('Stale notification cleared on page open.');
+  });
+
+  function scheduleNotificationAutoClose(record) {
+    clearNotificationTimer(record);
+    record.autoCloseTimerId = setTimeout(() => {
+      closeNotificationRecord(record, 'auto-timeout');
+    }, NOTIFICATION_TIMEOUT_MS);
+  }
+
+  function createManagedNotification({
+    kind,
+    title,
+    text,
+    image = NOTIFICATION_ICON,
+    silent = false,
+    dismissOnReturn = false,
+    onclick
+  }) {
+    // Never stack old script notifications behind a new one.
+    if (activeNotification) closeNotificationRecord(activeNotification, 'superseded');
+
+    const record = {
+      tag: makeNotificationTag(kind),
+      control: null,
+      dismissOnReturn,
+      returnDismissArmedAt: Date.now() + RETURN_DISMISS_GRACE_MS,
+      autoCloseTimerId: null,
+      closed: false
+    };
+
+    activeNotification = record;
+    rememberActiveNotification(record.tag);
+
+    try {
+      log('Showing notification:', {
+        kind,
+        dismissOnReturn,
+        visibility: document.visibilityState,
+        hasFocus: document.hasFocus?.()
+      });
+
+      record.control = GM_notification({
+        title,
+        text,
+        tag: record.tag,
+        image,
+        silent,
+        // Tampermonkey honors timeout. Violentmonkey currently ignores this
+        // option, so scheduleNotificationAutoClose() is the cross-manager fallback.
+        timeout: NOTIFICATION_TIMEOUT_MS,
+        onclick(event) {
+          if (record.closed) return;
+          try { event?.preventDefault?.(); } catch {}
+          closeNotificationRecord(record, 'notification-click');
+          try { onclick?.(event); } catch (error) {
+            console.error('[ChatGPT Prompt-Bound Alert] notification click failed:', error);
+          }
+        },
+        ondone() {
+          clearNotificationTimer(record);
+          record.closed = true;
+          if (activeNotification === record) activeNotification = null;
+          forgetActiveNotification(record.tag);
+          log('Notification closed by manager/system:', kind);
+        }
+      });
+
+      scheduleNotificationAutoClose(record);
+      return record;
+    } catch (error) {
+      clearNotificationTimer(record);
+      record.closed = true;
+      if (activeNotification === record) activeNotification = null;
+      forgetActiveNotification(record.tag);
+      throw error;
+    }
+  }
+
   async function showReadyNotification(responseText) {
     const title = cleanSessionTitle(document.title);
     const text = truncateResponse(responseText);
     const conversationUrl = location.href;
+
+    // For real completion notifications, arm return-dismiss only when ChatGPT
+    // was actually not active when completion happened.
+    const dismissOnReturn = !pageIsActive();
     const customChimePlayed = await playCompletionChime();
 
-    GM_notification({
+    createManagedNotification({
+      kind: 'ready',
       title,
       text,
-      tag: `chatgpt-prompt-bound-${Date.now()}`,
-      image: NOTIFICATION_ICON,
       silent: customChimePlayed,
-      onclick(event) {
-        try { event?.preventDefault?.(); } catch {}
+      dismissOnReturn,
+      onclick() {
         try { window.focus(); } catch {}
         if (location.href !== conversationUrl) location.href = conversationUrl;
       }
     });
   }
 
+  function rememberProcessedEntry(key) {
+    if (processedEntries.has(key)) return false;
+    while (processedEntries.size >= MAX_PROCESSED_ENTRIES) {
+      const oldest = processedEntries.values().next().value;
+      if (oldest === undefined) break;
+      processedEntries.delete(oldest);
+    }
+    processedEntries.add(key);
+    return true;
+  }
+
   async function handleConversationCompletion(entry) {
     const key = entryKey(entry);
-    if (processedEntries.has(key)) return;
-    processedEntries.add(key);
-    if (processedEntries.size > 100) processedEntries.delete(processedEntries.values().next().value);
+    if (!rememberProcessedEntry(key)) return;
 
     if (wasManuallyStopped(entry)) {
       log('Request ended after manual Stop; notification suppressed.');
@@ -385,34 +566,24 @@
     if (now - lastCompletionEpoch < 400) return;
     lastCompletionEpoch = now;
 
-    if (activeCompletionWatch) {
-      log('Completion watcher already active; reusing the prompt-bound DOM watcher.');
-      return;
-    }
-
-    log('Conversation request completed; waiting through transient Work status if needed.');
-    activeCompletionWatch = waitForFinalAnswerBoundToLatestPrompt();
-
-    try {
-      const snapshot = await activeCompletionWatch;
-      if (!snapshot?.response) return;
-
-      const fingerprint = `${snapshot.promptKey}|${snapshot.assistantKey}|${snapshot.response.slice(0, 1000)}`;
-      if (fingerprint === lastNotificationFingerprint) return;
-      lastNotificationFingerprint = fingerprint;
-
-      await showReadyNotification(snapshot.response);
-    } finally {
-      activeCompletionWatch = null;
-    }
+    log('Conversation request completed; resolving assistant turn after latest user turn.');
+    const responseText = await waitForAnswerBoundToLatestPrompt();
+    await showReadyNotification(responseText);
   }
 
   function processResourceEntries(entries) {
-    for (const entry of entries) {
-      if (!isConversationResource(entry)) continue;
-      handleConversationCompletion(entry).catch((error) => {
-        console.error('[ChatGPT Prompt-Bound Alert] completion failed:', error);
-      });
+    try {
+      for (const entry of entries) {
+        if (!isConversationResource(entry)) continue;
+        handleConversationCompletion(entry).catch((error) => {
+          console.error('[ChatGPT Prompt-Bound Alert] completion failed:', error);
+        });
+      }
+    } finally {
+      try {
+        performance.clearResourceTimings?.();
+        resourceTimingDiagnostics.clears += 1;
+      } catch {}
     }
   }
 
@@ -435,14 +606,18 @@
 
   GM_registerMenuCommand('Test sound + notification', async () => {
     const customChimePlayed = await playCompletionChime();
-    GM_notification({
+
+    // Important: invoking this command opens the userscript manager popup,
+    // which temporarily makes document.hasFocus() false. Never arm
+    // dismiss-on-return for the test itself, otherwise closing that popup races
+    // with GM_notification and makes the toast appear random.
+    createManagedNotification({
+      kind: 'test',
       title: 'ChatGPT Prompt-Bound test',
       text: 'If you heard a sound and saw this notification, both channels work.',
-      tag: `chatgpt-prompt-bound-test-${Date.now()}`,
-      image: NOTIFICATION_ICON,
       silent: customChimePlayed,
-      onclick(event) {
-        try { event?.preventDefault?.(); } catch {}
+      dismissOnReturn: false,
+      onclick() {
         try { window.focus(); } catch {}
       }
     });
@@ -459,7 +634,8 @@
       version: VERSION,
       title: document.title,
       resolvedLatestAnswer: answerBoundToLatestPrompt().slice(0, 260),
-      readyForNotification: Boolean(readyPromptSnapshot()),
+      processedEntryCount: processedEntries.size,
+      resourceTiming: { ...resourceTimingDiagnostics },
       turns
     });
   });
