@@ -2,6 +2,7 @@
 
 const OFFSCREEN_DOCUMENT = 'offscreen.html';
 const RESPONSE_PREVIEW_MAX_CHARS = 260;
+const NOTIFICATION_TIMEOUT_MS = 8000;
 const CHATGPT_REQUEST_FILTER = {
   urls: [
     'https://chatgpt.com/backend-api/f/conversation*',
@@ -11,6 +12,7 @@ const CHATGPT_REQUEST_FILTER = {
 
 let creatingOffscreen = null;
 const lastNotificationFingerprintByTab = new Map();
+const pageReturnDismissByTab = new Map();
 
 function normalizePathname(url) {
   try {
@@ -65,10 +67,10 @@ function truncateResponse(text, maxChars = RESPONSE_PREVIEW_MAX_CHARS) {
   const normalized = String(text || '').replace(/\s+/g, ' ').trim();
   if (!normalized) return 'Response finished.';
   if (normalized.length <= maxChars) return normalized;
-  const slice = normalized.slice(0, Math.max(1, maxChars - 1));
+  const slice = normalized.slice(0, Math.max(1, maxChars - 3));
   const lastSpace = slice.lastIndexOf(' ');
   const safeCut = lastSpace >= Math.floor(maxChars * 0.7) ? slice.slice(0, lastSpace) : slice;
-  return `${safeCut.trimEnd()}…`;
+  return `${safeCut.trimEnd()}...`;
 }
 
 async function emitBoth({ tabId = null, title = 'ChatGPT', message = 'Response finished.', isTest = false } = {}) {
@@ -92,11 +94,42 @@ async function emitBoth({ tabId = null, title = 'ChatGPT', message = 'Response f
     })
   ]);
 
+  // Chrome MV3 notifications do not reliably support timeout on all platforms,
+  // so also clear it after the same userscript timeout for consistent behavior.
+  if (notificationResult.status === 'fulfilled') {
+    setTimeout(() => {
+      chrome.notifications.clear(id).catch(() => {});
+    }, NOTIFICATION_TIMEOUT_MS);
+  }
+
   if (soundResult.status === 'rejected') console.error('Prompt-Bound Alert: sound failed', soundResult.reason);
   if (notificationResult.status === 'rejected') console.error('Prompt-Bound Alert: notification failed', notificationResult.reason);
   if (soundResult.status === 'rejected' && notificationResult.status === 'rejected') {
     throw new Error('Both sound and desktop notification failed.');
   }
+  return id;
+}
+
+function cancelPageReturnDismiss(tabId) {
+  if (typeof tabId !== 'number') return;
+  const record = pageReturnDismissByTab.get(tabId);
+  if (!record) return;
+  if (record.autoCloseId !== null) clearTimeout(record.autoCloseId);
+  pageReturnDismissByTab.delete(tabId);
+}
+
+function schedulePageReturnDismiss(tabId) {
+  if (typeof tabId !== 'number') return;
+  cancelPageReturnDismiss(tabId);
+  const record = {
+    notificationId: '',
+    returnDismissArmedAt: Date.now() + 500,
+    autoCloseId: setTimeout(() => {
+      pageReturnDismissByTab.delete(tabId);
+    }, 8500)
+  };
+  pageReturnDismissByTab.set(tabId, record);
+  return record;
 }
 
 async function signalConversationRequestCompleted(tabId) {
@@ -134,11 +167,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (fingerprint && lastNotificationFingerprintByTab.get(tabId) === fingerprint) return;
     if (fingerprint) lastNotificationFingerprintByTab.set(tabId, fingerprint);
 
+    const pageReturnRecord = message.dismissOnReturn ? schedulePageReturnDismiss(tabId) : null;
     emitBoth({
       tabId,
       title: cleanSessionTitle(message.sessionTitle),
       message: truncateResponse(message.response)
-    }).catch((error) => console.error('Prompt-Bound Alert: completion alert failed', error));
+    }).then((notificationId) => {
+      if (pageReturnRecord) pageReturnRecord.notificationId = String(notificationId || '');
+    }).catch((error) => {
+      if (pageReturnRecord) cancelPageReturnDismiss(tabId);
+      console.error('Prompt-Bound Alert: completion alert failed', error);
+    });
+    return;
+  }
+
+  if (message?.type === 'CHATGPT_PAGE_RETURNED') {
+    const tabId = sender.tab?.id;
+    if (typeof tabId !== 'number') return;
+    const record = pageReturnDismissByTab.get(tabId);
+    if (!record) return;
+    if (Date.now() < record.returnDismissArmedAt) return;
+    cancelPageReturnDismiss(tabId);
+    if (record.notificationId) {
+      chrome.notifications.clear(record.notificationId).catch(() => {});
+    }
     return;
   }
 
@@ -154,6 +206,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   lastNotificationFingerprintByTab.delete(tabId);
+  cancelPageReturnDismiss(tabId);
 });
 
 chrome.notifications.onClicked.addListener(async (notificationId) => {
