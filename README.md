@@ -30,7 +30,7 @@ This repository ships the same behavior in two forms.
 
 Use [`extension/`](./extension/) if you want the strongest background-tab behavior on Chrome, Edge, Brave, Vivaldi, and other Chromium browsers.
 
-The extension uses a Manifest V3 service worker to detect ChatGPT conversation-request completion, then arms a small content-script watcher for the prompt-bound final turn. In normal Chat mode the final turn is usually ready immediately. In Work mode, transient status turns such as `Working` are ignored and the watcher stays armed until the real response is rendered and generation has stopped. The service worker then plays the sound through an offscreen document and emits the native notification.
+The extension uses a Manifest V3 service worker to detect ChatGPT conversation-request completion, then arms a small content-script watcher for the prompt-bound final turn. The watcher is structurally bound to the latest user prompt, so an older answer cannot be selected. The service worker then plays the sound through an offscreen document and emits the native notification.
 
 **Requirements:** Chromium 116 or newer.
 
@@ -43,7 +43,7 @@ Recommended managers:
 - [Tampermonkey](https://www.tampermonkey.net/)
 - [Violentmonkey](https://violentmonkey.github.io/)
 
-The userscript observes completion of the same ChatGPT conversation resource, then keeps a prompt-bound DOM watcher armed when Work mode is still showing a transient status. It uses the userscript notification API plus background-capable audio and does not use a polling loop.
+The userscript observes completion of the same ChatGPT conversation resource, then keeps a prompt-bound DOM watcher armed until the answer after the latest user prompt is rendered. It uses the userscript notification API plus background-capable audio and does not use a polling loop.
 
 ## Install
 
@@ -88,9 +88,6 @@ Conversation network request completes
 Arm prompt-bound completion watcher
       |
       v
-Ignore transient Work status (Working, Thinking, etc.)
-      |
-      v
 Read the final assistant turn after that prompt
       |
       +-------------------+
@@ -99,7 +96,7 @@ Read the final assistant turn after that prompt
     sound          native notification
 ```
 
-The final answer preview is **prompt-bound**. The extractor finds the latest user turn and only considers assistant turns that occur after it. An older response therefore cannot be selected just because React has not finished repainting some unrelated part of the UI.
+The final answer preview is **prompt-bound**. The extractor finds the latest user turn and only considers assistant turns that occur after it. An older response therefore cannot be selected just because React has not finished repainting some unrelated part of the UI. If no answer text appears, the watcher falls back to a generic "Response finished." alert after a short timeout.
 
 ## Why two implementations?
 
