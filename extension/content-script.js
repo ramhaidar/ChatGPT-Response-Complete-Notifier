@@ -202,7 +202,10 @@
       sessionTitle: document.title,
       response: snapshot.response,
       fingerprint,
-      dismissOnReturn: !pageIsActive()
+      completionKey: snapshot.assistantKey
+        ? `${snapshot.promptKey}|${snapshot.assistantKey}`
+        : '',
+      dismissOnReturn: false
     }).catch(() => {});
   }
 

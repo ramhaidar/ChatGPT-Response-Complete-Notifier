@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Prompt-Bound Completion Alert",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Sound + desktop notification for completed ChatGPT answers. Preview is structurally bound to the latest user prompt so the previous answer cannot be selected.",
   "permissions": [
     "notifications",

@@ -2,7 +2,6 @@
 
 const OFFSCREEN_DOCUMENT = 'offscreen.html';
 const RESPONSE_PREVIEW_MAX_CHARS = 260;
-const NOTIFICATION_TIMEOUT_MS = 8000;
 const CHATGPT_REQUEST_FILTER = {
   urls: [
     'https://chatgpt.com/backend-api/f/conversation*',
@@ -94,14 +93,6 @@ async function emitBoth({ tabId = null, title = 'ChatGPT', message = 'Response f
     })
   ]);
 
-  // Chrome MV3 notifications do not reliably support timeout on all platforms,
-  // so also clear it after the same userscript timeout for consistent behavior.
-  if (notificationResult.status === 'fulfilled') {
-    setTimeout(() => {
-      chrome.notifications.clear(id).catch(() => {});
-    }, NOTIFICATION_TIMEOUT_MS);
-  }
-
   if (soundResult.status === 'rejected') console.error('Prompt-Bound Alert: sound failed', soundResult.reason);
   if (notificationResult.status === 'rejected') console.error('Prompt-Bound Alert: notification failed', notificationResult.reason);
   if (soundResult.status === 'rejected' && notificationResult.status === 'rejected') {
@@ -164,8 +155,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (typeof tabId !== 'number') return;
 
     const fingerprint = String(message.fingerprint || '');
-    if (fingerprint && lastNotificationFingerprintByTab.get(tabId) === fingerprint) return;
-    if (fingerprint) lastNotificationFingerprintByTab.set(tabId, fingerprint);
+    const completionKey = String(message.completionKey || fingerprint);
+    if (completionKey && lastNotificationFingerprintByTab.get(tabId) === completionKey) return;
+    if (completionKey) lastNotificationFingerprintByTab.set(tabId, completionKey);
 
     const pageReturnRecord = message.dismissOnReturn ? schedulePageReturnDismiss(tabId) : null;
     emitBoth({
