@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Prompt-Bound Completion Alert
 // @namespace    local.chatgpt.prompt-bound-ready
-// @version      1.0.8
+// @version      1.0.9
 // @description  Sound + native notification when ChatGPT finishes. Preview is structurally bound to the latest user prompt so the previous answer cannot be selected.
 // @author       Local
 // @icon         data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAADR0lEQVR4nO2dXXIiMQwGzdYeYS7B/Q/DcbJPVLEkBHuQ9fd1PxPiSG3J9jg1l+M4vgbI8id6ABALAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOL8jR7AGGPcbrfoIYRwvV6jhzAuURdCVJP+iigZ3AUg8b/jLYKbACR+DS8RXBaBJH8dr5htrQAk3oad1WBbBSD5duyM5RYBSL49u2Ka4hxgjBx7Yk+yTBLzNcDKH6aW9FdExsy0BZD8c6zEwrpyuLcAEv8z97h4twazCjAzcJL/npkYWUrC00BxTARg9tviWQVcKgDJX6fVswDIy8cCZDnQUMQi9tsrAOX/PB6xS3MU7MW7WaMmrIQAK6Xy8bMKMrQW4NMeef/5ziK0FMB6YdpZhHbbwJ27ko47nlYCeCSomwRtBPBMTCcJWggQkZAuEpQXIDIRHSQovQs4m4BXq/kz33e73UrvDkoLsMq7REXdyomkbAtYvX+4MktXP19ZmJICeF0+VZCgpACzWPTmyv19hnICzM40y8TNflfFKlBOALClpQA7ynbXVlBKgAoltsIYHyklwAw7Z2rHKtBOAFgDAcQpI0Cl3lpprGUEmMGjR3dbB7QSANZBAHHSPg6u1Ed/4nn8WVsHFUCctBVghqhZ9fx7K1crKoA4CCAOAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOKUvhBS+SJGFqgA4iCAOAggDgKIk3YRWP3mbdb/A3iGCiAOAoiDAOKkXQM8Y9FTebv5d6gA4iCAOAggDgKIIyXA7MJOZQE4hoMA2U7wZl8akQGP2H0sQKaAzfJqzNX+FovxljkHsKZasnfhsgbI1gYq4BUzEwFmZhMSzDMTK6sKJrULgO+YCUAVsMFz9o8RsAjs/Cr2T4iaHKYtQOE1azuIfEp5OY7jy/Qbx7nkqlWELDFKcw5ARYhhyy5AbTZ7sCum27aBSGDHzlhuWQM8Q3k/h8ckcjkIohqs4xUzlwrwCNXgd7wni7sAdxDhf6KqZJgAj6jKkKE1phAA4uBpoDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOIggDgIIA4CiPMPMxH82wgo8LsAAAAASUVORK5CYII=
@@ -9,7 +9,6 @@
 // @run-at       document-start
 // @sandbox      JavaScript
 // @grant        unsafeWindow
-// @grant        GM_notification
 // @grant        GM_registerMenuCommand
 // @grant        window.focus
 // @noframes
@@ -18,13 +17,12 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.0.8';
+  const VERSION = '1.0.9';
   const NOTIFICATION_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAADR0lEQVR4nO2dXXIiMQwGzdYeYS7B/Q/DcbJPVLEkBHuQ9fd1PxPiSG3J9jg1l+M4vgbI8id6ABALAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOL8jR7AGGPcbrfoIYRwvV6jhzAuURdCVJP+iigZ3AUg8b/jLYKbACR+DS8RXBaBJH8dr5htrQAk3oad1WBbBSD5duyM5RYBSL49u2Ka4hxgjBx7Yk+yTBLzNcDKH6aW9FdExsy0BZD8c6zEwrpyuLcAEv8z97h4twazCjAzcJL/npkYWUrC00BxTARg9tviWQVcKgDJX6fVswDIy8cCZDnQUMQi9tsrAOX/PB6xS3MU7MW7WaMmrIQAK6Xy8bMKMrQW4NMeef/5ziK0FMB6YdpZhHbbwJ27ko47nlYCeCSomwRtBPBMTCcJWggQkZAuEpQXIDIRHSQovQs4m4BXq/kz33e73UrvDkoLsMq7REXdyomkbAtYvX+4MktXP19ZmJICeF0+VZCgpACzWPTmyv19hnICzM40y8TNflfFKlBOALClpQA7ynbXVlBKgAoltsIYHyklwAw7Z2rHKtBOAFgDAcQpI0Cl3lpprGUEmMGjR3dbB7QSANZBAHHSPg6u1Ed/4nn8WVsHFUCctBVghqhZ9fx7K1crKoA4CCAOAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOKUvhBS+SJGFqgA4iCAOAggDgKIk3YRWP3mbdb/A3iGCiAOAoiDAOKkXQM8Y9FTebv5d6gA4iCAOAggDgKIIyXA7MJOZQE4hoMA2U7wZl8akQGP2H0sQKaAzfJqzNX+FovxljkHsKZasnfhsgbI1gYq4BUzEwFmZhMSzDMTK6sKJrULgO+YCUAVsMFz9o8RsAjs/Cr2T4iaHKYtQOE1azuIfEp5OY7jy/Qbx7nkqlWELDFKcw5ARYhhyy5AbTZ7sCum27aBSGDHzlhuWQM8Q3k/h8ckcjkIohqs4xUzlwrwCNXgd7wni7sAdxDhf6KqZJgAj6jKkKE1phAA4uBpoDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOIggDgIIA4CiPMPMxH82wgo8LsAAAAASUVORK5CYII=';
   const RESPONSE_PREVIEW_MAX_CHARS = 260;
   const FINAL_TURN_WAIT_MS = 30000;
   const ANSWER_CHECK_THROTTLE_MS = 150;
   const MAX_PROCESSED_ENTRIES = 100;
-  const NOTIFICATION_TIMEOUT_MS = 8000;
   const RETURN_DISMISS_GRACE_MS = 500;
   const ACTIVE_NOTIFICATION_STORAGE_KEY = 'chatgpt-prompt-bound-active-notification';
   const CONVERSATION_PATHS = new Set([
@@ -38,6 +36,8 @@
   let lastCompletionEpoch = 0;
   let activeNotification = null;
   const processedEntries = new Set();
+  const notifiedCompletionKeys = new Set();
+  let nativeNotificationPermission = null;
   const resourceTimingDiagnostics = {
     seen: 0,
     conversationCandidates: 0,
@@ -72,7 +72,15 @@
 
   function turnNodes() {
     try {
-      return Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]'));
+      const turns = Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]'));
+      if (turns.length > 0) return turns;
+
+      // ChatGPT has also rendered turns without the conversation-turn test id.
+      // Role nodes preserve the same document order and are enough to bind the
+      // response to the latest user message.
+      return Array.from(document.querySelectorAll(
+        '[data-message-author-role="user"], [data-message-author-role="assistant"]'
+      ));
     } catch {
       return [];
     }
@@ -98,12 +106,11 @@
         ? turn
         : turn.querySelector('[data-message-author-role="assistant"]');
       if (!roleNode) return '';
-      const rendered = roleNode.querySelector('.markdown, [class*="prose"]');
-      return normalize(
-        rendered
-          ? (rendered.textContent || rendered.innerText || '')
-          : (roleNode.textContent || roleNode.innerText || '')
+      const rendered = roleNode.querySelector(
+        '.markdown, [class*="prose"], [data-message-content], [class*="whitespace-pre-wrap"]'
       );
+      const renderedText = rendered?.textContent || rendered?.innerText || '';
+      return normalize(renderedText || roleNode.textContent || roleNode.innerText || '');
     } catch {
       return '';
     }
@@ -186,7 +193,7 @@
             frameId = null;
             check();
           };
-          if (typeof requestAnimationFrame === 'function') {
+          if (document.visibilityState !== 'hidden' && typeof requestAnimationFrame === 'function') {
             frameId = requestAnimationFrame(run);
           } else {
             run();
@@ -231,12 +238,12 @@
     }
   }
 
-  async function playCompletionChime() {
+  async function playCompletionChime(deadline = Number.POSITIVE_INFINITY) {
     const ctx = getAudioContext();
     if (!ctx) return false;
     try {
       if (ctx.state === 'suspended') await ctx.resume();
-      if (ctx.state !== 'running') return false;
+      if (ctx.state !== 'running' || performance.now() > deadline) return false;
       const now = ctx.currentTime;
       const master = ctx.createGain();
       master.gain.setValueAtTime(0.0001, now);
@@ -264,8 +271,14 @@
     }
   }
 
-  document.addEventListener('pointerdown', () => { unlockAudio().catch(() => {}); }, { capture: true, passive: true });
-  document.addEventListener('keydown', () => { unlockAudio().catch(() => {}); }, { capture: true, passive: true });
+  document.addEventListener('pointerdown', () => {
+    unlockAudio().catch(() => {});
+    if (pageIsActive()) ensureNativeNotificationPermission().catch(() => {});
+  }, { capture: true, passive: true });
+  document.addEventListener('keydown', () => {
+    unlockAudio().catch(() => {});
+    if (pageIsActive()) ensureNativeNotificationPermission().catch(() => {});
+  }, { capture: true, passive: true });
 
   function isStopButton(node) {
     if (!(node instanceof Element)) return false;
@@ -321,23 +334,6 @@
     return lastManualStopEpoch >= startEpoch - 100 && lastManualStopEpoch <= endEpoch + 1500;
   }
 
-  function rememberActiveNotification(tag) {
-    try { sessionStorage.setItem(ACTIVE_NOTIFICATION_STORAGE_KEY, tag); } catch {}
-  }
-
-  function forgetActiveNotification(tag) {
-    try {
-      if (!tag || sessionStorage.getItem(ACTIVE_NOTIFICATION_STORAGE_KEY) === tag) {
-        sessionStorage.removeItem(ACTIVE_NOTIFICATION_STORAGE_KEY);
-      }
-    } catch {}
-  }
-
-  function makeNotificationTag(kind = 'ready') {
-    const randomPart = Math.random().toString(36).slice(2, 9);
-    return `chatgpt-prompt-bound-${kind}-${Date.now()}-${randomPart}`;
-  }
-
   function pageIsActive() {
     try {
       return document.visibilityState === 'visible' && document.hasFocus();
@@ -346,199 +342,59 @@
     }
   }
 
-  function replaceTaggedNotificationWithExpiringStub(tag) {
-    if (!tag) return;
-    try {
-      GM_notification({
-        title: 'ChatGPT',
-        text: '\u200B',
-        tag,
-        silent: true,
-        timeout: 1,
-        ondone() {}
-      });
-    } catch {}
+  function playCompletionChimeWithFallback() {
+    const deadline = performance.now() + 250;
+    return Promise.race([
+      playCompletionChime(deadline),
+      new Promise((resolve) => setTimeout(() => resolve(false), 250))
+    ]);
   }
 
-  function clearNotificationTimer(record) {
-    if (!record?.autoCloseTimerId) return;
-    clearTimeout(record.autoCloseTimerId);
-    record.autoCloseTimerId = null;
-  }
-
-  function closeNotificationRecord(record, reason = 'dismiss') {
-    if (!record || record.closed) return;
-    record.closed = true;
-    clearNotificationTimer(record);
-
-    if (activeNotification === record) activeNotification = null;
-    forgetActiveNotification(record.tag);
-
-    try {
-      if (record.control && typeof record.control.remove === 'function') {
-        Promise.resolve(record.control.remove()).catch(() => {});
-        log('Notification dismissed:', reason);
-        return;
+  async function ensureNativeNotificationPermission() {
+    const NotificationConstructor = PAGE.Notification;
+    if (typeof NotificationConstructor !== 'function') return false;
+    if (nativeNotificationPermission === 'granted') return true;
+    nativeNotificationPermission = NotificationConstructor.permission;
+    if (nativeNotificationPermission === 'default') {
+      try {
+        nativeNotificationPermission = await NotificationConstructor.requestPermission();
+      } catch {
+        nativeNotificationPermission = 'denied';
+        return false;
       }
-    } catch {}
-
-    // Tampermonkey legacy GM_notification does not expose a close handle.
-    // Reusing the same unique tag replaces the old notification with a 1 ms stub.
-    replaceTaggedNotificationWithExpiringStub(record.tag);
-    log('Notification dismissed via tag replacement:', reason);
+    }
+    return nativeNotificationPermission === 'granted';
   }
 
-  function dismissReadyNotification(reason = 'page-return') {
-    const current = activeNotification;
-    if (current) {
-      closeNotificationRecord(current, reason);
-      return;
+  async function createNativeNotification({ title, text, silent }) {
+    if (!await ensureNativeNotificationPermission()) {
+      log('Native notification permission is not granted.');
+      return null;
     }
 
-    const storedTag = (() => {
-      try { return sessionStorage.getItem(ACTIVE_NOTIFICATION_STORAGE_KEY); } catch { return null; }
-    })();
-    if (!storedTag) return;
-
-    forgetActiveNotification(storedTag);
-    replaceTaggedNotificationWithExpiringStub(storedTag);
-    log('Stored notification dismissed:', reason);
-  }
-
-  function dismissNotificationAfterRealPageReturn(reason) {
-    const current = activeNotification;
-    if (!current?.dismissOnReturn) return;
-    if (Date.now() < current.returnDismissArmedAt) return;
-    if (pageIsActive()) closeNotificationRecord(current, reason);
-  }
-
-  // A short grace prevents a focus event caused by opening/closing a userscript
-  // manager popup from instantly dismissing a newly-created notification.
-  window.addEventListener('focus', () => {
-    dismissNotificationAfterRealPageReturn('window-focus');
-  }, true);
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      dismissNotificationAfterRealPageReturn('visibility-visible');
-    }
-  }, true);
-
-  document.addEventListener('pointerdown', () => {
-    dismissNotificationAfterRealPageReturn('page-interaction');
-  }, { capture: true, passive: true });
-
-  document.addEventListener('keydown', () => {
-    dismissNotificationAfterRealPageReturn('page-interaction');
-  }, { capture: true, passive: true });
-
-  // Clear a notification that survived reload/navigation before creating a new one.
-  queueMicrotask(() => {
-    const staleTag = (() => {
-      try { return sessionStorage.getItem(ACTIVE_NOTIFICATION_STORAGE_KEY); } catch { return null; }
-    })();
-    if (!staleTag) return;
-    forgetActiveNotification(staleTag);
-    replaceTaggedNotificationWithExpiringStub(staleTag);
-    log('Stale notification cleared on page open.');
-  });
-
-  function scheduleNotificationAutoClose(record) {
-    clearNotificationTimer(record);
-    record.autoCloseTimerId = setTimeout(() => {
-      closeNotificationRecord(record, 'auto-timeout');
-    }, NOTIFICATION_TIMEOUT_MS);
-  }
-
-  function createManagedNotification({
-    kind,
-    title,
-    text,
-    image = NOTIFICATION_ICON,
-    silent = false,
-    dismissOnReturn = false,
-    onclick
-  }) {
-    // Never stack old script notifications behind a new one.
-    if (activeNotification) closeNotificationRecord(activeNotification, 'superseded');
-
-    const record = {
-      tag: makeNotificationTag(kind),
-      control: null,
-      dismissOnReturn,
-      returnDismissArmedAt: Date.now() + RETURN_DISMISS_GRACE_MS,
-      autoCloseTimerId: null,
-      closed: false
+    const NotificationConstructor = PAGE.Notification;
+    const notification = new NotificationConstructor(title, {
+      body: text,
+      icon: NOTIFICATION_ICON,
+      silent
+    });
+    notification.onclick = () => {
+      try { PAGE.focus?.(); } catch {}
+      notification.close();
     };
-
-    activeNotification = record;
-    rememberActiveNotification(record.tag);
-
-    try {
-      log('Showing notification:', {
-        kind,
-        dismissOnReturn,
-        visibility: document.visibilityState,
-        hasFocus: document.hasFocus?.()
-      });
-
-      record.control = GM_notification({
-        title,
-        text,
-        tag: record.tag,
-        image,
-        silent,
-        // Tampermonkey honors timeout. Violentmonkey currently ignores this
-        // option, so scheduleNotificationAutoClose() is the cross-manager fallback.
-        timeout: NOTIFICATION_TIMEOUT_MS,
-        onclick(event) {
-          if (record.closed) return;
-          try { event?.preventDefault?.(); } catch {}
-          closeNotificationRecord(record, 'notification-click');
-          try { onclick?.(event); } catch (error) {
-            console.error('[ChatGPT Prompt-Bound Alert] notification click failed:', error);
-          }
-        },
-        ondone() {
-          clearNotificationTimer(record);
-          record.closed = true;
-          if (activeNotification === record) activeNotification = null;
-          forgetActiveNotification(record.tag);
-          log('Notification closed by manager/system:', kind);
-        }
-      });
-
-      scheduleNotificationAutoClose(record);
-      return record;
-    } catch (error) {
-      clearNotificationTimer(record);
-      record.closed = true;
-      if (activeNotification === record) activeNotification = null;
-      forgetActiveNotification(record.tag);
-      throw error;
-    }
+    return notification;
   }
 
   async function showReadyNotification(responseText) {
     const title = cleanSessionTitle(document.title);
     const text = truncateResponse(responseText);
-    const conversationUrl = location.href;
 
-    // For real completion notifications, arm return-dismiss only when ChatGPT
-    // was actually not active when completion happened.
-    const dismissOnReturn = !pageIsActive();
-    const customChimePlayed = await playCompletionChime();
-
-    createManagedNotification({
+    const customChimePlayed = await playCompletionChimeWithFallback();
+    await createNativeNotification({
       kind: 'ready',
       title,
       text,
-      silent: customChimePlayed,
-      dismissOnReturn,
-      onclick() {
-        try { window.focus(); } catch {}
-        if (location.href !== conversationUrl) location.href = conversationUrl;
-      }
+      silent: customChimePlayed
     });
   }
 
@@ -568,7 +424,15 @@
 
     log('Conversation request completed; resolving assistant turn after latest user turn.');
     const responseText = await waitForAnswerBoundToLatestPrompt();
+    const completionKey = `${location.pathname}|${normalize(responseText).slice(0, 1000)}`;
+    if (notifiedCompletionKeys.has(completionKey)) return;
     await showReadyNotification(responseText);
+    while (notifiedCompletionKeys.size >= MAX_PROCESSED_ENTRIES) {
+      const oldest = notifiedCompletionKeys.values().next().value;
+      if (oldest === undefined) break;
+      notifiedCompletionKeys.delete(oldest);
+    }
+    notifiedCompletionKeys.add(completionKey);
   }
 
   function processResourceEntries(entries) {
@@ -605,21 +469,16 @@
   }
 
   GM_registerMenuCommand('Test sound + notification', async () => {
-    const customChimePlayed = await playCompletionChime();
+    const customChimePlayed = await playCompletionChimeWithFallback();
 
     // Important: invoking this command opens the userscript manager popup,
     // which temporarily makes document.hasFocus() false. Never arm
     // dismiss-on-return for the test itself, otherwise closing that popup races
     // with GM_notification and makes the toast appear random.
-    createManagedNotification({
-      kind: 'test',
+    await createNativeNotification({
       title: 'ChatGPT Prompt-Bound test',
       text: 'If you heard a sound and saw this notification, both channels work.',
-      silent: customChimePlayed,
-      dismissOnReturn: false,
-      onclick() {
-        try { window.focus(); } catch {}
-      }
+      silent: customChimePlayed
     });
   });
 
