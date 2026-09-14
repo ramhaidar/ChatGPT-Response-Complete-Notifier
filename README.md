@@ -69,6 +69,8 @@ The extension popup includes a **Test sound + notification** button so both noti
 
 The userscript also exposes a **Test sound + notification** command from the userscript-manager menu.
 
+The userscript declares `@updateURL` / `@downloadURL` pointing at this repository, so Tampermonkey and Violentmonkey can check for a newer version and update it in place. `userscript/chatgpt-answer-notifier.meta.js` holds only the metadata block and backs the cheap update check; bump `@version` in both files when you release so installed copies pick the change up.
+
 ## Why it still works when the tab is unfocused
 
 A notification feature is not very useful if it only works while you are already staring at the tab.
@@ -136,7 +138,8 @@ There is also no separate Firefox extension package. Firefox users who want to t
 │   ├── popup.js
 │   └── icons/
 ├── userscript/
-│   └── chatgpt-answer-notifier.user.js
+│   ├── chatgpt-answer-notifier.user.js
+│   └── chatgpt-answer-notifier.meta.js
 └── README.md
 ```
 
