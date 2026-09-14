@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Prompt-Bound Completion Alert
 // @namespace    local.chatgpt.prompt-bound-ready
-// @version      1.1.0
+// @version      1.1.1
 // @description  Sound + native notification when ChatGPT finishes. Preview is structurally bound to the latest user prompt so the previous answer cannot be selected.
 // @author       Local
 // @homepageURL  https://github.com/ramhaidar/ChatGPT-Response-Complete-Notifier

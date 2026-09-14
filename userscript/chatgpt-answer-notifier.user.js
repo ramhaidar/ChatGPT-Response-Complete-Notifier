@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Prompt-Bound Completion Alert
 // @namespace    local.chatgpt.prompt-bound-ready
-// @version      1.1.0
+// @version      1.1.1
 // @description  Sound + native notification when ChatGPT finishes. Preview is structurally bound to the latest user prompt so the previous answer cannot be selected.
 // @author       Local
 // @homepageURL  https://github.com/ramhaidar/ChatGPT-Response-Complete-Notifier
@@ -22,11 +22,16 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.1.0';
+  const VERSION = '1.1.1';
   const NOTIFICATION_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAADR0lEQVR4nO2dXXIiMQwGzdYeYS7B/Q/DcbJPVLEkBHuQ9fd1PxPiSG3J9jg1l+M4vgbI8id6ABALAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOL8jR7AGGPcbrfoIYRwvV6jhzAuURdCVJP+iigZ3AUg8b/jLYKbACR+DS8RXBaBJH8dr5htrQAk3oad1WBbBSD5duyM5RYBSL49u2Ka4hxgjBx7Yk+yTBLzNcDKH6aW9FdExsy0BZD8c6zEwrpyuLcAEv8z97h4twazCjAzcJL/npkYWUrC00BxTARg9tviWQVcKgDJX6fVswDIy8cCZDnQUMQi9tsrAOX/PB6xS3MU7MW7WaMmrIQAK6Xy8bMKMrQW4NMeef/5ziK0FMB6YdpZhHbbwJ27ko47nlYCeCSomwRtBPBMTCcJWggQkZAuEpQXIDIRHSQovQs4m4BXq/kz33e73UrvDkoLsMq7REXdyomkbAtYvX+4MktXP19ZmJICeF0+VZCgpACzWPTmyv19hnICzM40y8TNflfFKlBOALClpQA7ynbXVlBKgAoltsIYHyklwAw7Z2rHKtBOAFgDAcQpI0Cl3lpprGUEmMGjR3dbB7QSANZBAHHSPg6u1Ed/4nn8WVsHFUCctBVghqhZ9fx7K1crKoA4CCAOAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOKUvhBS+SJGFqgA4iCAOAggDgKIk3YRWP3mbdb/A3iGCiAOAoiDAOKkXQM8Y9FTebv5d6gA4iCAOAggDgKIIyXA7MJOZQE4hoMA2U7wZl8akQGP2H0sQKaAzfJqzNX+FovxljkHsKZasnfhsgbI1gYq4BUzEwFmZhMSzDMTK6sKJrULgO+YCUAVsMFz9o8RsAjs/Cr2T4iaHKYtQOE1azuIfEp5OY7jy/Qbx7nkqlWELDFKcw5ARYhhyy5AbTZ7sCum27aBSGDHzlhuWQM8Q3k/h8ckcjkIohqs4xUzlwrwCNXgd7wni7sAdxDhf6KqZJgAj6jKkKE1phAA4uBpoDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOIggDgIIA4CiPMPMxH82wgo8LsAAAAASUVORK5CYII=';
   const RESPONSE_PREVIEW_MAX_CHARS = 260;
   const FINAL_TURN_WAIT_MS = 30000;
   const ANSWER_CHECK_THROTTLE_MS = 150;
+  const STREAM_SETTLE_MS = 900;
+  const STREAM_POLL_MS = 500;
+  const GENERATION_HARD_CAP_MS = 600000;
+  const STOP_BUTTON_SELECTOR =
+    'button[data-testid="stop-button"], button[data-testid="fruitjuice-stop-button"]';
   const MAX_PROCESSED_ENTRIES = 100;
   const RETURN_DISMISS_GRACE_MS = 500;
   const ACTIVE_NOTIFICATION_STORAGE_KEY = 'chatgpt-prompt-bound-active-notification';
@@ -150,16 +155,18 @@
   }
 
   function waitForAnswerBoundToLatestPrompt() {
-    const immediate = answerBoundToLatestPrompt();
-    if (immediate) return Promise.resolve(immediate);
-
     return new Promise((resolve) => {
       let settled = false;
       let observer = null;
-      let timeoutId = null;
+      let watchdogId = null;
+      let pollId = null;
       let throttleId = null;
       let frameId = null;
       let lastCheckAt = 0;
+      let stableText = '';
+      let stableSince = 0;
+      let generationEndedAt = 0;
+      const startedAt = Date.now();
 
       const cleanupScheduledCheck = () => {
         if (throttleId !== null) {
@@ -176,7 +183,8 @@
         if (settled) return;
         settled = true;
         if (observer) observer.disconnect();
-        if (timeoutId !== null) clearTimeout(timeoutId);
+        if (watchdogId !== null) clearInterval(watchdogId);
+        if (pollId !== null) clearInterval(pollId);
         cleanupScheduledCheck();
         resolve(text);
       };
@@ -184,8 +192,40 @@
       const check = () => {
         if (settled) return;
         lastCheckAt = performance.now();
+
+        // Safety valve: a stop button that never clears must not wedge the
+        // watcher. Abort without notifying, because the answer never finished.
+        if (Date.now() - startedAt >= GENERATION_HARD_CAP_MS) {
+          finish(null);
+          return;
+        }
+
+        // The stop button is the authoritative "still working" signal. While it
+        // is present ChatGPT is thinking or streaming, which is not completion.
+        if (isGenerating()) {
+          stableText = '';
+          stableSince = 0;
+          generationEndedAt = 0;
+          return;
+        }
+
         const text = answerBoundToLatestPrompt();
-        if (text) finish(text);
+        if (!text) {
+          stableText = '';
+          stableSince = 0;
+          return;
+        }
+
+        const now = Date.now();
+        if (text !== stableText) {
+          stableText = text;
+          stableSince = now;
+          return;
+        }
+
+        // Generation ended and the text stopped changing. Only now is the
+        // answer actually finished, so a late repaint cannot cut it short.
+        if (now - stableSince >= STREAM_SETTLE_MS) finish(text);
       };
 
       const scheduleCheck = () => {
@@ -212,9 +252,22 @@
         observer.observe(root, { childList: true, subtree: true, characterData: true });
       }
 
-      timeoutId = setTimeout(() => {
-        finish(answerBoundToLatestPrompt() || 'Response finished.');
-      }, FINAL_TURN_WAIT_MS);
+      // Interval fallback: background tabs freeze requestAnimationFrame, so the
+      // observer chain alone can stall until the tab regains focus.
+      pollId = setInterval(check, STREAM_POLL_MS);
+
+      // Only counted once generation has ended, so a long reasoning phase is
+      // not mistaken for the 30s "no answer text appeared" fallback.
+      watchdogId = setInterval(() => {
+        if (settled) return;
+        if (isGenerating()) {
+          generationEndedAt = 0;
+          return;
+        }
+        const now = Date.now();
+        if (generationEndedAt === 0) generationEndedAt = now;
+        if (now - generationEndedAt >= FINAL_TURN_WAIT_MS) finish(answerBoundToLatestPrompt());
+      }, STREAM_POLL_MS);
 
       check();
     });
@@ -287,7 +340,30 @@
 
   function isStopButton(node) {
     if (!(node instanceof Element)) return false;
-    return Boolean(node.closest('button[data-testid="stop-button"], button[data-testid="fruitjuice-stop-button"]'));
+    return Boolean(node.closest(STOP_BUTTON_SELECTOR));
+  }
+
+  function isElementVisible(node) {
+    if (!node) return false;
+    try {
+      // A stop button kept mounted but display:none must not count as
+      // "generating", otherwise completion would never be detected.
+      return typeof node.getClientRects !== 'function' || node.getClientRects().length > 0;
+    } catch {
+      return true;
+    }
+  }
+
+  function isGenerating() {
+    try {
+      const stopButtons = document.querySelectorAll(STOP_BUTTON_SELECTOR);
+      for (const button of stopButtons) {
+        if (isElementVisible(button)) return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
   }
 
   document.addEventListener('click', (event) => {
@@ -429,6 +505,10 @@
 
     log('Conversation request completed; resolving assistant turn after latest user turn.');
     const responseText = await waitForAnswerBoundToLatestPrompt();
+    if (!responseText) {
+      log('Watcher aborted without a finished answer; notification suppressed.');
+      return;
+    }
     const completionKey = `${location.pathname}|${normalize(responseText).slice(0, 1000)}`;
     if (notifiedCompletionKeys.has(completionKey)) return;
     await showReadyNotification(responseText);

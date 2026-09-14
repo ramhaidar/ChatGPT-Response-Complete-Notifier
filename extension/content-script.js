@@ -7,6 +7,11 @@
   const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
   const FINAL_TURN_WAIT_MS = 30000;
   const ANSWER_CHECK_THROTTLE_MS = 150;
+  const STREAM_SETTLE_MS = 900;
+  const STREAM_POLL_MS = 500;
+  const GENERATION_HARD_CAP_MS = 600000;
+  const STOP_BUTTON_SELECTOR =
+    'button[data-testid="stop-button"], button[data-testid="fruitjuice-stop-button"]';
   let watchToken = 0;
   let lastSentFingerprint = '';
   let suppressUntilEpoch = 0;
@@ -121,17 +126,42 @@
     return document.querySelector('main') || document.body || document.documentElement;
   }
 
-  function waitForAnswerBoundToLatestPrompt() {
-    const immediate = answerBoundToLatestPrompt();
-    if (immediate) return Promise.resolve(immediate);
+  function isElementVisible(node) {
+    if (!node) return false;
+    try {
+      // A stop button kept mounted but display:none must not count as
+      // "generating", otherwise completion would never be detected.
+      return typeof node.getClientRects !== 'function' || node.getClientRects().length > 0;
+    } catch {
+      return true;
+    }
+  }
 
+  function isGenerating() {
+    try {
+      const stopButtons = document.querySelectorAll(STOP_BUTTON_SELECTOR);
+      for (const button of stopButtons) {
+        if (isElementVisible(button)) return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  function waitForAnswerBoundToLatestPrompt() {
     return new Promise((resolve) => {
       let settled = false;
       let observer = null;
-      let timeoutId = null;
+      let watchdogId = null;
+      let pollId = null;
       let throttleId = null;
       let frameId = null;
       let lastCheckAt = 0;
+      let stableText = '';
+      let stableSince = 0;
+      let generationEndedAt = 0;
+      const startedAt = Date.now();
 
       const cleanupScheduledCheck = () => {
         if (throttleId !== null) {
@@ -148,7 +178,8 @@
         if (settled) return;
         settled = true;
         if (observer) observer.disconnect();
-        if (timeoutId !== null) clearTimeout(timeoutId);
+        if (watchdogId !== null) clearInterval(watchdogId);
+        if (pollId !== null) clearInterval(pollId);
         cleanupScheduledCheck();
         resolve(text);
       };
@@ -156,8 +187,40 @@
       const check = () => {
         if (settled) return;
         lastCheckAt = performance.now();
+
+        // Safety valve: a stop button that never clears must not wedge the
+        // watcher. Abort without notifying, because the answer never finished.
+        if (Date.now() - startedAt >= GENERATION_HARD_CAP_MS) {
+          finish(null);
+          return;
+        }
+
+        // The stop button is the authoritative "still working" signal. While it
+        // is present ChatGPT is thinking or streaming, which is not completion.
+        if (isGenerating()) {
+          stableText = '';
+          stableSince = 0;
+          generationEndedAt = 0;
+          return;
+        }
+
         const text = answerBoundToLatestPrompt();
-        if (text) finish(text);
+        if (!text) {
+          stableText = '';
+          stableSince = 0;
+          return;
+        }
+
+        const now = Date.now();
+        if (text !== stableText) {
+          stableText = text;
+          stableSince = now;
+          return;
+        }
+
+        // Generation ended and the text stopped changing. Only now is the
+        // answer actually finished, so a late repaint cannot cut it short.
+        if (now - stableSince >= STREAM_SETTLE_MS) finish(text);
       };
 
       const scheduleCheck = () => {
@@ -170,7 +233,7 @@
             frameId = null;
             check();
           };
-          if (typeof requestAnimationFrame === 'function') {
+          if (document.visibilityState !== 'hidden' && typeof requestAnimationFrame === 'function') {
             frameId = requestAnimationFrame(run);
           } else {
             run();
@@ -184,9 +247,24 @@
         observer.observe(root, { childList: true, subtree: true, characterData: true });
       }
 
-      timeoutId = setTimeout(() => {
-        finish(answerBoundToLatestPrompt() || 'Response finished.');
-      }, FINAL_TURN_WAIT_MS);
+      // Interval fallback: background tabs freeze requestAnimationFrame, so the
+      // observer chain alone can stall until the tab regains focus.
+      pollId = setInterval(check, STREAM_POLL_MS);
+
+      // Only counted once generation has ended, so a long reasoning phase is
+      // not mistaken for the 30s "no answer text appeared" fallback.
+      watchdogId = setInterval(() => {
+        if (settled) return;
+        if (isGenerating()) {
+          generationEndedAt = 0;
+          return;
+        }
+        const now = Date.now();
+        if (generationEndedAt === 0) generationEndedAt = now;
+        if (now - generationEndedAt >= FINAL_TURN_WAIT_MS) {
+          finish(answerBoundToLatestPrompt() || 'Response finished.');
+        }
+      }, STREAM_POLL_MS);
 
       check();
     });
@@ -211,16 +289,10 @@
 
   function armForCurrentPrompt() {
     if (Date.now() < suppressUntilEpoch) return;
-    const snapshot = latestPromptSnapshot();
-    if (snapshot?.response) {
-      sendCompletion(snapshot);
-      return;
-    }
-
     const token = watchToken;
     waitForAnswerBoundToLatestPrompt()
       .then((text) => {
-        if (token !== watchToken) return;
+        if (token !== watchToken || !text) return;
         const resolved = latestPromptSnapshot();
         if (resolved?.response) {
           sendCompletion(resolved);
