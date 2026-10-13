@@ -2,7 +2,7 @@
 schema_version: 1
 scope: "project"
 project_root: "D:\\GitHub\\ChatGPT-Response-Complete-Notifier"
-updated_at: "2026-09-14T08:44:50.836Z"
+updated_at: "2026-10-13T05:46:38.132Z"
 ---
 
 # Main Memory
@@ -18,3 +18,4 @@ updated_at: "2026-09-14T08:44:50.836Z"
 ## Notification / Completion detection
 
 - **completion-detection-contract**: Completion detection is TWO-STAGE; do not collapse it back into one stage. Stage 1 (transport) = the answer stream POST ended: extension uses `chrome.webRequest.onCompleted` on `POST /backend-api/f/conversation` or `/backend-api/conversation` with 2xx (service-worker.js); userscript uses a `PerformanceObserver` on resource entries for the same paths with a 2xx/absent `responseStatus` (installNetworkCompletionObserver). Stage 2 (DOM settle) = `waitForAnswerBoundToLatestPrompt()` in both content-script.js and chatgpt-answer-notifier.user.js must confirm **both**: (a) `isGenerating()` is false — a VISIBLE `button[data-testid="stop-button"], button[data-testid="fruitjuice-stop-button"]` means the model is thinking/streaming, checked via `isElementVisible` (`getClientRects().length > 0`) because ChatGPT can keep the button mounted but hidden; and (b) the prompt-bound answer text has been unchanged for `STREAM_SETTLE_MS` (900 ms). Rationale: stage 1 alone is NOT "the model is done" — the stream can end while the model is still thinking and the PREVIOUS answer is still in the DOM. Treating stage 1 as completion caused a real reported bug: an alert fired during thinking with the previous stale answer as the preview. Keep the guard: removing the stop-button/stability gate as "redundant" re-introduces that bug. Related invariants: never send from `armForCurrentPrompt()` on an already-present answer (that fast path was removed for this reason); `FINAL_TURN_WAIT_MS` (30 s) only starts counting AFTER generation ends, so a long reasoning phase does not consume it; `GENERATION_HARD_CAP_MS` (10 min) aborts WITHOUT notifying, and a null/empty resolve must suppress the alert; watchers skip `requestAnimationFrame` when `document.visibilityState === 'hidden'` and rely on a `setInterval` (500 ms) poll so the gate progresses in background tabs.
+- **chatgpt-fallback-turn-dom-compatibility**: ChatGPT’s current rendered turns may use `[data-chatgpt-search-unit-key*="fallback-turn-"]` with role suffixes `:user`/`:assistant`, and assistant text under `[data-markdown-text-style="assistant-message"]`; old `data-testid^="conversation-turn-"` / `data-message-author-role` selectors then find nothing, suppressing both toast and sound. Extension and userscript support both old and new markup; user tested v1.1.2 and confirmed alerts work.
