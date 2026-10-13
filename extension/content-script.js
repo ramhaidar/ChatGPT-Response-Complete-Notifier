@@ -37,7 +37,9 @@
 
   function turnNodes() {
     try {
-      return Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]'));
+      const turns = Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]'));
+      if (turns.length > 0) return turns;
+      return Array.from(document.querySelectorAll('[data-chatgpt-search-unit-key*="fallback-turn-"]'));
     } catch {
       return [];
     }
@@ -46,12 +48,16 @@
   function roleOf(turn) {
     if (!turn) return '';
     try {
+      const key = turn.getAttribute('data-chatgpt-search-unit-key') || '';
       const direct = normalize(
-        turn.getAttribute('data-turn') || turn.getAttribute('data-message-author-role') || ''
+        turn.getAttribute('data-turn') ||
+        turn.getAttribute('data-message-author-role') ||
+        turn.getAttribute('data-conversation-role') ||
+        (key.match(/:(user|assistant)$/) || [])[1] || ''
       ).toLowerCase();
       if (direct === 'user' || direct === 'assistant') return direct;
-      if (turn.querySelector('[data-message-author-role="user"]')) return 'user';
-      if (turn.querySelector('[data-message-author-role="assistant"]')) return 'assistant';
+      if (turn.querySelector('[data-message-author-role="user"], [data-conversation-role="user"]')) return 'user';
+      if (turn.querySelector('[data-message-author-role="assistant"], [data-conversation-role="assistant"]')) return 'assistant';
     } catch {}
     return '';
   }
@@ -61,10 +67,10 @@
     try {
       const roleNode = turn.matches?.('[data-message-author-role="assistant"]')
         ? turn
-        : turn.querySelector('[data-message-author-role="assistant"]');
-      if (!roleNode) return '';
-
-      const rendered = roleNode.querySelector('.markdown, [class*="prose"]');
+        : turn.querySelector('[data-message-author-role="assistant"]') || turn;
+      const rendered = roleNode.querySelector(
+        '[data-markdown-text-style="assistant-message"], .markdown, [class*="prose"], [data-message-content]'
+      );
       return normalize(
         rendered
           ? (rendered.textContent || rendered.innerText || '')
@@ -96,7 +102,9 @@
     const userTurn = turns[latestUserIndex];
     const promptKey = [
       location.pathname,
-      userTurn?.getAttribute('data-testid') || `user-${latestUserIndex}`
+      userTurn?.getAttribute('data-testid') ||
+      userTurn?.getAttribute('data-chatgpt-search-unit-key') ||
+      `user-${latestUserIndex}`
     ].join('|');
 
     if (!response || assistantIndex < 0) {
@@ -106,7 +114,10 @@
     const assistantTurn = turns[assistantIndex];
     return {
       promptKey,
-      assistantKey: assistantTurn?.getAttribute('data-testid') || `assistant-${assistantIndex}`,
+      assistantKey:
+        assistantTurn?.getAttribute('data-testid') ||
+        assistantTurn?.getAttribute('data-chatgpt-search-unit-key') ||
+        `assistant-${assistantIndex}`,
       response
     };
   }

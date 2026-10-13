@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT Prompt-Bound Completion Alert
 // @namespace    local.chatgpt.prompt-bound-ready
-// @version      1.1.1
+// @version      1.1.2
 // @description  Sound + native notification when ChatGPT finishes. Preview is structurally bound to the latest user prompt so the previous answer cannot be selected.
 // @author       Local
 // @homepageURL  https://github.com/ramhaidar/ChatGPT-Response-Complete-Notifier
@@ -22,7 +22,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.1.1';
+  const VERSION = '1.1.2';
   const NOTIFICATION_ICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAADR0lEQVR4nO2dXXIiMQwGzdYeYS7B/Q/DcbJPVLEkBHuQ9fd1PxPiSG3J9jg1l+M4vgbI8id6ABALAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOL8jR7AGGPcbrfoIYRwvV6jhzAuURdCVJP+iigZ3AUg8b/jLYKbACR+DS8RXBaBJH8dr5htrQAk3oad1WBbBSD5duyM5RYBSL49u2Ka4hxgjBx7Yk+yTBLzNcDKH6aW9FdExsy0BZD8c6zEwrpyuLcAEv8z97h4twazCjAzcJL/npkYWUrC00BxTARg9tviWQVcKgDJX6fVswDIy8cCZDnQUMQi9tsrAOX/PB6xS3MU7MW7WaMmrIQAK6Xy8bMKMrQW4NMeef/5ziK0FMB6YdpZhHbbwJ27ko47nlYCeCSomwRtBPBMTCcJWggQkZAuEpQXIDIRHSQovQs4m4BXq/kz33e73UrvDkoLsMq7REXdyomkbAtYvX+4MktXP19ZmJICeF0+VZCgpACzWPTmyv19hnICzM40y8TNflfFKlBOALClpQA7ynbXVlBKgAoltsIYHyklwAw7Z2rHKtBOAFgDAcQpI0Cl3lpprGUEmMGjR3dbB7QSANZBAHHSPg6u1Ed/4nn8WVsHFUCctBVghqhZ9fx7K1crKoA4CCAOAoiDAOIggDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOKUvhBS+SJGFqgA4iCAOAggDgKIk3YRWP3mbdb/A3iGCiAOAoiDAOKkXQM8Y9FTebv5d6gA4iCAOAggDgKIIyXA7MJOZQE4hoMA2U7wZl8akQGP2H0sQKaAzfJqzNX+FovxljkHsKZasnfhsgbI1gYq4BUzEwFmZhMSzDMTK6sKJrULgO+YCUAVsMFz9o8RsAjs/Cr2T4iaHKYtQOE1azuIfEp5OY7jy/Qbx7nkqlWELDFKcw5ARYhhyy5AbTZ7sCum27aBSGDHzlhuWQM8Q3k/h8ckcjkIohqs4xUzlwrwCNXgd7wni7sAdxDhf6KqZJgAj6jKkKE1phAA4uBpoDgIIA4CiIMA4iCAOAggDgKIgwDiIIA4CCAOAoiDAOIggDgIIA4CiPMPMxH82wgo8LsAAAAASUVORK5CYII=';
   const RESPONSE_PREVIEW_MAX_CHARS = 260;
   const FINAL_TURN_WAIT_MS = 30000;
@@ -84,10 +84,8 @@
     try {
       const turns = Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]'));
       if (turns.length > 0) return turns;
-
-      // ChatGPT has also rendered turns without the conversation-turn test id.
-      // Role nodes preserve the same document order and are enough to bind the
-      // response to the latest user message.
+      const fallbackTurns = Array.from(document.querySelectorAll('[data-chatgpt-search-unit-key*="fallback-turn-"]'));
+      if (fallbackTurns.length > 0) return fallbackTurns;
       return Array.from(document.querySelectorAll(
         '[data-message-author-role="user"], [data-message-author-role="assistant"]'
       ));
@@ -99,12 +97,16 @@
   function roleOf(turn) {
     if (!turn) return '';
     try {
+      const key = turn.getAttribute('data-chatgpt-search-unit-key') || '';
       const direct = normalize(
-        turn.getAttribute('data-turn') || turn.getAttribute('data-message-author-role') || ''
+        turn.getAttribute('data-turn') ||
+        turn.getAttribute('data-message-author-role') ||
+        turn.getAttribute('data-conversation-role') ||
+        (key.match(/:(user|assistant)$/) || [])[1] || ''
       ).toLowerCase();
       if (direct === 'user' || direct === 'assistant') return direct;
-      if (turn.querySelector('[data-message-author-role="user"]')) return 'user';
-      if (turn.querySelector('[data-message-author-role="assistant"]')) return 'assistant';
+      if (turn.querySelector('[data-message-author-role="user"], [data-conversation-role="user"]')) return 'user';
+      if (turn.querySelector('[data-message-author-role="assistant"], [data-conversation-role="assistant"]')) return 'assistant';
     } catch {}
     return '';
   }
@@ -114,10 +116,9 @@
     try {
       const roleNode = turn.matches?.('[data-message-author-role="assistant"]')
         ? turn
-        : turn.querySelector('[data-message-author-role="assistant"]');
-      if (!roleNode) return '';
+        : turn.querySelector('[data-message-author-role="assistant"]') || turn;
       const rendered = roleNode.querySelector(
-        '.markdown, [class*="prose"], [data-message-content], [class*="whitespace-pre-wrap"]'
+        '[data-markdown-text-style="assistant-message"], .markdown, [class*="prose"], [data-message-content], [class*="whitespace-pre-wrap"]'
       );
       const renderedText = rendered?.textContent || rendered?.innerText || '';
       return normalize(renderedText || roleNode.textContent || roleNode.innerText || '');
